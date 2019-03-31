@@ -1,0 +1,7 @@
+(executable
+  (name term)
+  (libraries EPD ctypes ctypes.foreign))
+
+(env
+  (dev
+    (flags (:standard -warn-error -A))))
