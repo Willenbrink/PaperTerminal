@@ -11,7 +11,7 @@ let nth_opt list i =
     Some (List.nth list i)
   with _ -> None
 
-let ioctl = Dl.dlopen ~flags:[Dl.RTLD_LAZY] ~filename:("/home/pi/PaperTerminal/ioctl.so")
+let ioctl = Dl.dlopen ~flags:[Dl.RTLD_LAZY] ~filename:(Unix.getcwd () ^ "/ioctl.so")
 let funer name params = foreign ~from:ioctl ~release_runtime_lock:false name params
 
 let set_term_dim x y = funer "set_screen_dimensions" (int @-> int @-> returning void) x y
@@ -20,7 +20,7 @@ let get_term_dim () =
   funer "getx" (void @-> returning int) (), funer "gety" (void @-> returning int) ()
 
 let read_vcs () =
-  let fd = open_in "/dev/vcs" in
+  let fd = open_in "/dev/vcsa1" in
   let text = input_line fd in
   let () = close_in fd in
   text
@@ -33,7 +33,7 @@ let main () =
     let text = read_vcs () in
     let lines =
       let rec worker curr =
-        let len = min (String.length text - 10 - curr) 82 in
+        let len = min (String.length text - 10 - curr) 240 in
         if len <= 0 then []
         else String.sub text curr len :: worker (curr+len)
       in
