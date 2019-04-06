@@ -22,6 +22,9 @@ let display_buffer (x1,y1) (x2,y2) _ =
   lineto x2 y1;
   lineto x1 y1
 
+let display_buffer_all _ =
+  display_buffer (0,0) (size_x (), size_y ()) ()
+
 let draw_text (x,y) s =
   let y = size_y () - y in
   moveto (x+8) (y - 16);
