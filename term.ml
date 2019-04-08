@@ -63,7 +63,7 @@ let main () =
 
     let update_line i s =
       EPD.draw_text (0, i * 16) s;
-      if linesChanged < 3 then EPD.display_buffer (0, i * 16) (799, i * 16 + 16) EPD.Fast
+      if linesChanged < 3 then EPD.display_buffer ((0, i * 16),(799, i * 16 + 16)) EPD.Fast
     in
     List.iteri (fun i s -> match nth_opt prevlines i with
         | None -> update_line i s

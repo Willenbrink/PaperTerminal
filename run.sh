@@ -1,5 +1,5 @@
 #!/bin/sh
-make --directory=IT8951;
+make --directory=EPD;
 make;
 dune build ./term.exe;
 sudo killall term.exe;
