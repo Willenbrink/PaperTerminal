@@ -19,26 +19,52 @@ let get_term_dim () =
   let () = funer "get_screen_dimensions" (void @-> returning void) () in
   funer "getx" (void @-> returning int) (), funer "gety" (void @-> returning int) ()
 
+module Screen = struct
+  type 'a t = 'a array array
+
+  let create cols rows value : 'a t = Array.make_matrix cols rows value
+  let set t c r v =
+    let rows = Array.length t in
+    let cols = Array.length t.(0) in
+    if r >= rows || c >= cols then Printf.printf "Accessing %i:%i with max %i:%i\n" r c rows cols
+    else
+    t.(r).(c) <- v
+  let get t c r = t.(r).(c)
+  let getRow t r = t.(r) |> Array.to_list
+  let getRows (t : 'a t) =
+    Array.map (Array.to_list) t |> Array.to_list
+
+end
+
 let read_vcs () =
   let fd = open_in "/dev/vcsa1" in
-  let col = input_byte fd in
-  let row = input_byte fd in
+  let rows = input_byte fd in
+  let cols = input_byte fd in
   let x = input_byte fd in
   let y = input_byte fd in
+  ignore (x + y);
+  let text = Screen.create cols rows ' ' in
+  let modifiers = Screen.create cols rows 0 in
   let bytes () =
-    let rec worker text mods =
+    let rec worker x y =
       try
-      let text = (input_byte fd |> char_of_int : char) :: text in
-      let mods = input_byte fd :: mods in
-      worker text mods
-      with End_of_file -> text,mods
+        let byte1,byte2 = input_byte fd, input_byte fd in
+        Screen.set text x y (char_of_int byte1);
+        Screen.set modifiers x y byte2;
+        if y >= rows then text,modifiers
+        else if x >= cols then worker 0 (y+1)
+        else worker (x+1) y
+      with End_of_file -> text,modifiers
     in
-    worker [] []
+    worker 0 0
   in
   let (text,mods) = bytes () in
-
+  ignore mods;
   let () = close_in fd in
-  String.concat "" (List.map (String.make 1) text |> List.rev)
+  text
+
+let read_vcs () =
+  Screen.create 82 26 'c'
 
 let main () =
   EPD.init () |> ignore;
@@ -46,14 +72,11 @@ let main () =
   EPD.display_buffer_all EPD.White;
   let rec loop prevlines =
     let text = read_vcs () in
-    let lines =
-      let rec worker curr =
-        let len = min (String.length text - curr) 82 in
-        if len <= 0 then []
-        else String.sub text curr len :: worker (curr+len)
-      in
-      worker 0
-    in
+    let lines : string list = ["bla";"blub"] in
+    let lines : string list =
+      Screen.getRows text
+      |> List.map (List.map (fun c -> String.make 1 c))
+      |> List.map (String.concat "") in
     let linesChanged =
     List.mapi (fun i s -> i,s) lines
     |> List.fold_left (fun a (i,s) ->
@@ -73,7 +96,8 @@ let main () =
       ) lines;
     flush_all ();
     (if linesChanged >= 3 then EPD.display_buffer_all EPD.Fast);
-    loop lines
+    (*loop lines*)
+    ()
   in
   loop []
 
