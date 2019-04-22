@@ -53,8 +53,8 @@ let read_vcs () =
   let fd = open_in "/dev/vcsa1" in
   let rows = input_byte fd in
   let cols = input_byte fd in
-  let x = input_byte fd in
-  let y = input_byte fd in
+  let cursor_x = input_byte fd in
+  let cursor_y = input_byte fd in
   (*TODO resize instead of creating it completely new*)
   let text,mods =
     let text = Matrix.create cols rows ' ' in
@@ -74,48 +74,45 @@ let read_vcs () =
     worker 0 0
   in
 
-  (* x,y is the cursor position *)
-  Matrix.set text x y (char_of_int 0x7F);
+  Matrix.set text cursor_x cursor_y (char_of_int 0x7F);
 
   ignore mods;
   let () = close_in fd in
   text
 
-let main () =
+let init () =
   set_term_dim 37 100;
   EPD.init () |> ignore;
   EPD.clear EPD.bg;
-  EPD.display_buffer_all EPD.White;
-  let rec loop prevText =
-    let text = read_vcs () in
-    let lines : string list =
-      Matrix.getRows text
-      |> List.map (List.map (fun c -> String.make 1 c))
-      |> List.map (String.concat "")
-    in
+  EPD.display_buffer_all EPD.White
 
-    let chars_changed = Matrix.diff text prevText in
 
-    let update_char (x,y) =
-      Matrix.get text x y
-      |> EPD.draw_char (x * 8, y * 16)
-    in
-    let () = List.iter update_char chars_changed in
-    let dirty_area =
-      List.fold_left
-        (fun area (x,y) -> match area with
-           | None -> Some ((x,y),(x,y))
-           | Some ((lx,ly),(hx,hy)) -> Some ((min lx x, min ly y),(max hx x, max hy y)))
-        None
-        chars_changed
-    |> function None -> None | Some ((lx,ly),(hx,hy)) -> Some ((lx * 8, ly * 16),((hx+1) * 8, (hy+1) * 16))
-    in
-    (match dirty_area with
-    | None -> ()
-    | Some dirty_area -> EPD.display_buffer dirty_area EPD.Fast);
+let rec loop prevText =
+  let text = read_vcs () in
+  let chars_changed = Matrix.diff text prevText in
 
-    loop text
+  let update_char (x,y) =
+    Matrix.get text x y
+    |> EPD.draw_char (x * 8, y * 16)
   in
+  let () = List.iter update_char chars_changed in
+  let dirty_area =
+    List.fold_left
+      (fun area (x,y) -> match area with
+         | None -> Some ((x,y),(x,y))
+         | Some ((lx,ly),(hx,hy)) -> Some ((min lx x, min ly y),(max hx x, max hy y)))
+      None
+      chars_changed
+    |> function None -> None | Some ((lx,ly),(hx,hy)) -> Some ((lx * 8, ly * 16),((hx+1) * 8, (hy+1) * 16))
+  in
+  (match dirty_area with
+   | None -> ()
+   | Some dirty_area -> EPD.display_buffer dirty_area EPD.Fast);
+
+  loop text
+
+let main () =
+  init ();
   loop (Matrix.create 100 37 (char_of_int 0))
 
 let () = main ()
