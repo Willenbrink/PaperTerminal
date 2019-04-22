@@ -1,6 +1,6 @@
 (executable
   (name term)
-  (libraries EPD ctypes ctypes.foreign))
+  (libraries WiringPi ctypes ctypes.foreign))
 
 (env
   (dev
