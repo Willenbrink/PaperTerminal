@@ -24,7 +24,7 @@ Due to the fact that the display can only be accessed by one program at once it 
 # Dependencies
 * OCaml (>= 4.02)
 * GCC
-* ctypes and ctypes.foreign (see dune in project root)
+* ctypes and ctypes-foreign (see dune in project root)
 * EPD, provided by my fork of the IT8951 repository
 
 # Additional Notes
