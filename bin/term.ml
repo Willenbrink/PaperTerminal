@@ -1,53 +1,19 @@
 open Ctypes
 open Foreign
+open Epd
 
 let nth_opt list i =
   try
     Some (List.nth list i)
   with _ -> None
 
-let ioctl = Dl.dlopen ~flags:[Dl.RTLD_LAZY] ~filename:(Unix.getcwd () ^ "/ioctl.so")
+let ioctl = Dl.dlopen ~flags:[Dl.RTLD_LAZY] ~filename:(Unix.getcwd () ^ "/bin/ioctl.so")
 let funer name params = foreign ~from:ioctl ~release_runtime_lock:false name params
 
 let set_term_dim x y = funer "set_screen_dimensions" (int @-> int @-> returning void) x y
 let get_term_dim () =
   let () = funer "get_screen_dimensions" (void @-> returning void) () in
   funer "getx" (void @-> returning int) (), funer "gety" (void @-> returning int) ()
-
-module Matrix = struct
-  type 'a t = 'a array array
-
-  let create cols rows value : 'a t =
-    (* In docs: x then y but we want to access each row all at once -> first rows then cols
-       The getRow basically reads one value along the x dimension of the array , which corresponds to a column
-       but we want rows instead of columns*)
-    Array.make_matrix rows cols value
-  let set t c r v =
-    let rows = Array.length t in
-    let cols = Array.length t.(0) in
-    if r < 0 || c < 0 || r >= rows || c >= cols then Printf.printf "Accessing %i:%i with max %i:%i\n" r c rows cols
-    else
-    t.(r).(c) <- v
-  let get t c r = t.(r).(c)
-  let getRow t r = t.(r) |> Array.to_list
-  let getRows t =
-    Array.map (Array.to_list) t |> Array.to_list
-
-  let mapi f t =
-    Array.mapi (fun row_index row -> Array.mapi (fun col_index char -> f col_index row_index char) row) t
-
-  let iteri f t =
-    Array.iteri (fun row_index row -> Array.iteri (fun col_index char -> f col_index row_index char) row) t
-
-  let fold f_row f_col a b (t : 'a t) = (* Fold row by row, left to right*)
-    let fold_col = Array.fold_left (fun a char -> f_col a char) in
-    let fold_row = Array.fold_left (fun a row -> f_row a (fold_col b row)) in
-    fold_row a t
-
-  let diff t1 t2 =
-    let t_index = mapi (fun x y c -> (x,y,c)) t1 in
-    fold (@) (fun a (x,y,c) -> if get t2 x y = c then a else (x,y)::a) [] [] t_index
-end
 
 module type Draw =
 sig
@@ -138,9 +104,11 @@ let read_vcs () =
   text
 
 let init () =
+  print_endline "Configuring virtual terminal";
   set_term_dim 37 100;
-  EPD.init () |> ignore;
+  print_endline "Clearing buffer";
   EPD.clear EPD.bg;
+  print_endline " Updating screen";
   EPD.display_buffer_all EPD.White
 
 
@@ -155,7 +123,7 @@ let rec loop prevText =
     List.iter (fun ((x1,y1),(x2,y2)) -> Printf.printf "%i-%i : %i-%i\t" y1 x1 y2 x2) dirty_areas;
     if List.length dirty_areas <> 0 then print_endline "";
     *)
-    List.iter (fun ((x1,y1),(x2,y2)) -> EPD.display_buffer ((x1*8,y1*8),(x2*8+8,y2*16+16)) EPD.Fast) dirty_areas
+    List.iter (fun ((x1,y1),(x2,y2)) -> EPD.display_buffer ((x1*8,y1*8,x2*8+8,y2*16+16)) EPD.Fast) dirty_areas
   in
 
   let chars_changed = Matrix.diff text prevText in
@@ -168,4 +136,4 @@ let main () =
   init ();
   loop (Matrix.create 100 37 (char_of_int 0))
 
-let () = main ()
+let () = ()

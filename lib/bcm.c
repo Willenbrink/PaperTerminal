@@ -33,7 +33,7 @@ int transfer(int value)
 bool initBCM()
 {
   if (!bcm2835_init()) {
-    return true;
+    return false;
   }
 
   bcm2835_spi_begin();
@@ -50,7 +50,7 @@ bool initBCM()
   bcm2835_gpio_write(RESET, LOW);
   bcm2835_delay(100);
   bcm2835_gpio_write(RESET, HIGH);
-  return false;
+  return true;
 }
 
 void freeBCM()
