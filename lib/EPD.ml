@@ -1,31 +1,15 @@
-open Ctypes
-open Foreign
 open Controller
 
-let libIT = Dl.dlopen ~flags:[Dl.RTLD_LAZY] ~filename:("/opt/IT8951/eink-display/IT8951")
+(* Fourth layer: Provide basic drawing primitives and interact with the buffer *)
 
-let funer name params = foreign ~from:libIT ~release_runtime_lock:false name params
-let vv = void @-> returning void
-
-type point = int * int
-type area = point * point
-type image = int carray
-type mode = White | Unknown | Slow | Medium | Fast
-let mode_to_int = function White -> 0 | Unknown -> 1 | Slow -> 2 | Medium -> 3 | Fast -> 4
-
+(* TODO adjust range depending on bpp_mode*)
 let fg = 0x00
 let bg = 0xFF
 
-let check (x,y) = assert (x >= 0 && y >= 0 && x < width () && y < height ())
+let buffer () = State.get_buffer ()
 
-let free () = Controller.free ()
-
-let plot (x,y) =
-  check (x,y);
-  plot fg (x,y)
-
-let clear (c : int) = clear_color c
-
+let width () = Array.length (buffer ()).(0)
+let height () = Array.length (buffer ())
 let get_screen () = (0, 0, width (), height ())
 
 (* TODO unused
@@ -35,33 +19,53 @@ let load_image img ((x1,y1),(x2,y2) as a) =
 *)
 
 let display area mode =
-  display area (mode_to_int mode)
+  display area mode
 
 let display_buffer area mode =
-  display_buffer area (mode_to_int mode)
+  display_buffer area mode
 
 let display_all mode = display (get_screen ()) mode
 
 let display_buffer_all mode = display_buffer (get_screen ()) mode
 
-let draw_char ?(fg=fg) ?(bg=bg) (x,y as p) c =
-  (*TODO check area instead of point <- calculate area of char beforehand*)
-  check p;
-  put_char p c fg bg
-
-let draw_text ?(fg=fg) ?(bg=bg) (x,y as p) str =
-  (*TODO check area instead of point <- calculate area of char beforehand*)
-  check p;
-  put_text p str fg bg
-
 let rgb r g b = (r+g+b)/3
 
 let random int = Random.int int
 
-let point () = random (width () -1), random (height () -1)
+let point () = random (height () -1), random (width () -1)
 
 let char () = random 255 |> Char.chr
 
-(* Returns true on failure TODO is this correct? *)
-let _ = Controller.init ()
 
+let plot (y,x) =
+  try
+    (buffer ()).(y).(x) <- fg
+  with _ -> ()
+
+let line ((y1,x1) as p1, ((y2,x2) as p2)) =
+  (* Printf.printf "Plotting (y:%i,x:%i) (y:%i,x:%i)\n" y1 x1 y2 x2; *)
+  Bresenham.draw_line ~f:(fun x y -> plot (x,y)) ~p0:p1 ~p1:p2
+
+let draw_points amount =
+  List.init amount (fun _ -> point ())
+  |> List.iter plot
+
+let draw_lines amount =
+  List.init amount (fun _ -> (point (), point ()))
+  |> List.iter line
+
+let repeat f =
+  while true do
+    f ()
+  done
+
+let test_points () =
+  draw_points 1000;
+  display_buffer_all `Fast
+
+let test_lines () =
+  draw_lines 100;
+  display_buffer_all `Fast
+
+let _ =
+  Controller.init

@@ -107,3 +107,10 @@ let write_reg reg value =
 let read_reg reg =
   write_cmd_args `Register_read [addr_of_reg reg];
   read_datum ()
+
+let get_vcom () =
+  write_cmd_args `VCOM [0];
+  read_datum ()
+
+let set_vcom vcom =
+  write_cmd_args `VCOM [1; vcom]

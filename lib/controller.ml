@@ -3,12 +3,37 @@ open State
 
 (* Third layer: Control the IT8951 by sending commands *)
 
-let get_vcom () =
-  write_cmd_args `VCOM [0];
-  read_datum ()
+let int_of_bool = function true -> 1 | false -> 0
 
-let set_vcom vcom =
-  write_cmd_args `VCOM [1; vcom]
+let int_of_bpp = function
+  (* TODO packing *)
+  | `Bpp2 -> 0 (* Packing: 1100_1100 *)
+  | `Bpp3 -> 1 (* Packing: 1110_1110 *)
+  | `Bpp4 -> 2 (* Packing: 1111_1111 *)
+  | `Bpp8 -> 3 (* Packing: 1111_1111 *)
+
+let int_of_rot = function
+  (* TODO Does the rotation in memory impact performance or anything? *)
+  | `Down -> 0
+  | `Right -> 1
+  | `Up -> 2
+  | `Left -> 3
+
+let int_of_mode = function
+  | `White -> 0
+  | `Unknown -> 1
+  | `Slow -> 2
+  | `Medium -> 3
+  | `Fast -> 4
+
+(* TODO move somewhere appropriate *)
+let split_32 value =
+  assert (value land 0x7FFFFFFF00000000 == 0);
+  (value land 0xFFFF, (value lsr 16) land 0xFFFF)
+
+let flatten_list xs = List.map (fun (x,y) -> [x;y]) xs |> List.concat
+
+
 
 let print_device_info {width; height; address; fwversion; lutversion} =
   Printf.(
@@ -45,13 +70,6 @@ standBy
 initSleep
 *)
 
-(* TODO move somewhere appropriate *)
-let split_32 value =
-  assert (value land 0xFFFF0000 == 0);
-  (value land 0xFFFF, (value lsr 16) land 0xFFFF)
-
-let flatten_list xs = List.map (fun (x,y) -> [x;y]) xs |> List.concat
-
 let burst_write address content =
   let amount = List.length content in
   let args =
@@ -73,30 +91,16 @@ let burst_read address amount =
   write_cmd `Burst_end;
   result
 
-let int_of_bool = function true -> 1 | false -> 0
-
-let int_of_bpp = function
- (* TODO packing *)
-  | `Bpp2 -> 0 (* Packing: 1100_1100 *)
-  | `Bpp3 -> 1 (* Packing: 1110_1110 *)
-  | `Bpp4 -> 2 (* Packing: 1111_1111 *)
-  | `Bpp8 -> 3 (* Packing: 1111_1111 *)
-
-let int_of_rot = function
-  (* TODO Does the memory layout of this impact performance or anything? *)
-  | `Down -> 0
-  | `Right -> 1
-  | `Up -> 2
-  | `Left -> 3
-
 let set_image_buffer_base_addr address =
   let wordH = (address lsr 16) land 0xFFFF in
   let wordL = address land 0xFFFF in
   write_reg `LISAR2 wordH;
   write_reg `LISAR wordL
 
+(* TODO unused because transmitting the area too does not affect performance
 let load_img_start image_info =
   write_cmd_args `Load_image [image_info]
+   *)
 
 let load_img_area_start image_info (x,y,w,h) =
   let args = image_info :: [x;y;w;h] in
@@ -107,12 +111,12 @@ let load_img_end () =
 
 let load_image image_info area =
   (* TODO figure out something nicer than this *)
-  let helper acc x = match acc with
-    | None -> Some x
-    | Some y ->
-      let value = (y lsl 8) lor x in
-      write_data [value];
-      None
+  let rec merger (acc : int list) (xs : int list) : int list = match xs with
+    | [] -> acc
+    | x::y::xs ->
+      let value = (x lsl 8) lor y in
+      merger (value::acc) xs
+    | _ -> failwith "Invalid size of area"
   in
   (* Do not set the address repeatedly, only change when we use a second buffer in memory.
    * Can perhaps be used for some cool effects like moving the address 800*20 bytes along
@@ -125,20 +129,10 @@ let load_image image_info area =
   State.get_buffer ()
   |> Matrix.get_rows
   |> List.concat
-  |> List.fold_left helper None
-  |> ignore;
+  |> merger []
+  |> burst_write (get_dev_info ()).address;
   print_endline "Ending buffer transfer";
   load_img_end ()
-
-let rec wait_for_display_ready () =
-  match read_reg `LUTAFSR with
-  | 0 -> ()
-  | _ -> wait_for_display_ready ()
-
-let display_area (x,y,w,h) display_mode =
-  wait_for_display_ready ();
-  write_cmd_args `DPY_area [x; y; w; h; display_mode]
-
 (* TODO unused:
    let display_area_1bpp (x,y,w,h) 
    display_area_buffer
@@ -168,6 +162,15 @@ let transmit_image area =
   let image_info = get_image_info false `Bpp8 `Down in
   load_image image_info area
 
+let display_area (x,y,w,h) display_mode =
+  let rec wait_for_display_ready () =
+    match read_reg `LUTAFSR with
+    | 0 -> ()
+    | _ -> wait_for_display_ready ()
+  in
+  wait_for_display_ready ();
+  write_cmd_args `DPY_area [x; y; w; h; int_of_mode display_mode]
+
 let display area mode =
   let area = validate_area area in
   display_area area mode
@@ -176,32 +179,6 @@ let display_buffer area mode =
   let area = validate_area area in
   transmit_image area;
   display_area area mode
-
-let rgb (r,g,b) =
-  (r land 0xFF + g land 0xFF + b land 0xFF) / 3
-
-let clear_color (c : int) =
-  Matrix.mapi_inplace (fun _ _ -> c) (get_buffer ())
-  |> ignore
-
-let width () = (get_dev_info ()).width
-
-let height () = (get_dev_info ()).height
-
-let plot (c : int) (x,y) =
-  (get_buffer ()).(x).(y) <- c
-
-let put_char (x,y) char fg bg =
-  (* TODO simple diagonal *)
-  plot fg (x,y);
-  plot bg (x+1,y);
-  plot bg (x,y+1);
-  plot fg (x+1,y+1)
-
-let put_text (x,y) str fg bg =
-  String.to_seq str
-  |> List.of_seq
-  |> List.iteri (fun i char -> put_char (x + i*4,y) char fg bg)
 
 let init () =
   (* Initialise bus *)
@@ -221,7 +198,7 @@ let init () =
   State.set_buffer @@ Matrix.create dev_info.width dev_info.height 0xFF;
 
   (* Display white screen *)
-  display_buffer (0, 0, dev_info.width, dev_info.height) 0
+  display (0, 0, dev_info.width, dev_info.height) `White
 
 let free () =
   Bus.free ()
