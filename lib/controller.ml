@@ -3,12 +3,6 @@ open State
 
 (* Third layer: Control the IT8951 by sending commands *)
 
-let vcom = 1500 (* -1.53V = 1530 = 0x5FA *)
-
-type bpp = Bpp2 | Bpp3 | Bpp4 | Bpp8
-type rotation = Down | Right | Up | Left
-type image = { big_endian : bool; bpp : bpp; rotation : rotation; bitmap : int array array ref; dest : int }
-
 let get_vcom () =
   write_cmd_args `VCOM [0];
   read_datum ()
@@ -18,16 +12,14 @@ let set_vcom vcom =
 
 let print_device_info {width; height; address; fwversion; lutversion} =
   Printf.(
-    printf "****** IT8951 ******\n";
+    printf "IT8951 Device Info:\n";
     printf "Width: %i\nHeight: %i\nAddress: 0x%x\n" width height address;
     printf "FW Version: %s\nLUT Version: %s\n" fwversion lutversion
   )
 
-let get_device_info () =
+let query_device_info () =
   write_cmd `Dev_info;
-  let result = read_data 20 in
-  List.iter (fun i -> print_endline @@ string_of_int i) result;
-  match result with
+  match read_data 20 with
   | (width::height::addressL::addressH::rest) ->
     let rest =
       (* TODO Splits every read 16-bit value into two chars *)
@@ -45,7 +37,7 @@ let get_device_info () =
     let info = { width; height; address = (addressH lsl 16) lor addressL; fwversion; lutversion} in
     print_device_info info;
     info
-  | _ -> failwith "Error with info"
+  | _ -> failwith "Error while getting device_info: read data too short."
 
 (* TODO not included:
 systemRun
@@ -53,13 +45,18 @@ standBy
 initSleep
 *)
 
+(* TODO move somewhere appropriate *)
+let split_32 value =
+  assert (value land 0xFFFF0000 == 0);
+  (value land 0xFFFF, (value lsr 16) land 0xFFFF)
+
+let flatten_list xs = List.map (fun (x,y) -> [x;y]) xs |> List.concat
+
 let burst_write address content =
-  let length = List.length content in
+  let amount = List.length content in
   let args =
-    [address land 0xFFFF;
-     (address lsr 16) land 0xFFFF;
-     length land 0xFFFF;
-     (length lsr 16) land 0xFFFF]
+    [split_32 address; split_32 amount]
+    |> flatten_list
   in
   write_cmd_args `Burst_write args;
   write_data content;
@@ -67,13 +64,11 @@ let burst_write address content =
 
 let burst_read address amount =
   let args =
-    [address land 0xFFFF;
-     (address lsr 16) land 0xFFFF;
-     amount land 0xFFFF;
-     (amount lsr 16) land 0xFFFF]
+    [split_32 address; split_32 amount]
+    |> flatten_list
   in
-  write_cmd_args `Burst_read_t args;
-  write_cmd `Burst_read_s;
+  write_cmd_args `Burst_read_trigger args;
+  write_cmd `Burst_read_start;
   let result = read_data amount in
   write_cmd `Burst_end;
   result
@@ -81,36 +76,18 @@ let burst_read address amount =
 let int_of_bool = function true -> 1 | false -> 0
 
 let int_of_bpp = function
-  | Bpp2 -> 0
-  | Bpp3 -> 1
-  | Bpp4 -> 2
-  | Bpp8 -> 3
+ (* TODO packing *)
+  | `Bpp2 -> 0 (* Packing: 1100_1100 *)
+  | `Bpp3 -> 1 (* Packing: 1110_1110 *)
+  | `Bpp4 -> 2 (* Packing: 1111_1111 *)
+  | `Bpp8 -> 3 (* Packing: 1111_1111 *)
 
 let int_of_rot = function
-  | Down -> 0
-  | Right -> 1
-  | Up -> 2
-  | Left -> 3
-
-let load_img_start {big_endian; bpp; rotation; _} =
-  let arg =
-    ((int_of_bool big_endian) lsl 8)
-    lor ((int_of_bpp bpp) lsl 4)
-    lor (int_of_rot rotation)
-  in
-  write_cmd_args `Load_image [arg]
-
-let load_img_area_start {big_endian; bpp; rotation; _} (x,y,w,h) =
-  let args =
-    [((int_of_bool big_endian) lsl 8)
-     lor ((int_of_bpp bpp) lsl 4)
-     lor (int_of_rot rotation);
-     x;y;w;h]
-  in
-  write_cmd_args `Load_image_area args
-
-let load_img_end () =
-  write_cmd `Load_image_end
+  (* TODO Does the memory layout of this impact performance or anything? *)
+  | `Down -> 0
+  | `Right -> 1
+  | `Up -> 2
+  | `Left -> 3
 
 let set_image_buffer_base_addr address =
   let wordH = (address lsr 16) land 0xFFFF in
@@ -118,12 +95,18 @@ let set_image_buffer_base_addr address =
   write_reg `LISAR2 wordH;
   write_reg `LISAR wordL
 
-let rec wait_for_display_ready () =
-  match read_reg `LUTAFSR with
-  | 0 -> ()
-  | _ -> wait_for_display_ready ()
+let load_img_start image_info =
+  write_cmd_args `Load_image [image_info]
 
-let load_image ({dest; bitmap; _} as img) area =
+let load_img_area_start image_info (x,y,w,h) =
+  let args = image_info :: [x;y;w;h] in
+  write_cmd_args `Load_image_area args
+
+let load_img_end () =
+  write_cmd `Load_image_end
+
+let load_image image_info area =
+  (* TODO figure out something nicer than this *)
   let helper acc x = match acc with
     | None -> Some x
     | Some y ->
@@ -131,13 +114,26 @@ let load_image ({dest; bitmap; _} as img) area =
       write_data [value];
       None
   in
-  set_image_buffer_base_addr dest;
-  load_img_area_start img area;
-  Matrix.get_rows !bitmap
+  (* Do not set the address repeatedly, only change when we use a second buffer in memory.
+   * Can perhaps be used for some cool effects like moving the address 800*20 bytes along
+   * to easily scroll on the screen without retransmitting the whole image. TODO
+   *)
+  (State.get_dev_info ()).address
+  |> set_image_buffer_base_addr;
+  load_img_area_start image_info area;
+  print_endline "Starting buffer transfer";
+  State.get_buffer ()
+  |> Matrix.get_rows
   |> List.concat
   |> List.fold_left helper None
   |> ignore;
+  print_endline "Ending buffer transfer";
   load_img_end ()
+
+let rec wait_for_display_ready () =
+  match read_reg `LUTAFSR with
+  | 0 -> ()
+  | _ -> wait_for_display_ready ()
 
 let display_area (x,y,w,h) display_mode =
   wait_for_display_ready ();
@@ -148,29 +144,29 @@ let display_area (x,y,w,h) display_mode =
    display_area_buffer
 *)
 
-
 let validate_area (x,y,w,h) =
-  (* Assert the area is within bounds. Check first upper left corner and after rounding up the bottom right corner. Prevents w = -1 from succeeding *)
+  (* Assert the area is within bounds:
+   * Check first upper left corner and after rounding up the bottom right corner.
+   * Prevents w = -1 from succeeding.
+   *)
   assert (w >= 0 && h >= 0);
-    (* TODO always draw 2 pixels, therefore the displayed area must be rounded down/up
-  This is only relevant in the x direction *)
+  (* TODO always draw 2 pixels, therefore the displayed area must be rounded
+   * This is only relevant in the x direction.
+   *)
   let w = w + w mod 2 in
   assert (x + w <= (get_dev_info ()).width);
   assert (y + h <= (get_dev_info ()).height);
   (x,y,w,h)
 
-let load_image area =
+let get_image_info big_endian bpp rotation =
+  ((int_of_bool big_endian) lsl 8)
+  lor ((int_of_bpp bpp) lsl 4)
+  lor (int_of_rot rotation)
+
+let transmit_image area =
   let area = validate_area area in
-  let image =
-    {
-      big_endian = false;
-      bpp = Bpp8;
-      rotation = Down;
-      bitmap = ref (get_buffer ());
-      dest = (get_dev_info ()).address;
-    }
-  in
-  load_image image area
+  let image_info = get_image_info false `Bpp8 `Down in
+  load_image image_info area
 
 let display area mode =
   let area = validate_area area in
@@ -178,7 +174,7 @@ let display area mode =
 
 let display_buffer area mode =
   let area = validate_area area in
-  load_image area;
+  transmit_image area;
   display_area area mode
 
 let rgb (r,g,b) =
@@ -196,6 +192,7 @@ let plot (c : int) (x,y) =
   (get_buffer ()).(x).(y) <- c
 
 let put_char (x,y) char fg bg =
+  (* TODO simple diagonal *)
   plot fg (x,y);
   plot bg (x+1,y);
   plot bg (x,y+1);
@@ -215,10 +212,11 @@ let init () =
 
   (* Initialise board *)
   write_reg `I80CPCR 0x0001;
+  let vcom = 1500 in (* -1.53V = 1530 = 0x5FA *)
   set_vcom vcom;
 
   (* Initialise state used by other functions *)
-  let dev_info = get_device_info () in
+  let dev_info = query_device_info () in
   State.set_dev_info dev_info;
   State.set_buffer @@ Matrix.create dev_info.width dev_info.height 0xFF;
 

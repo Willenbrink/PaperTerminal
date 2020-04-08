@@ -63,5 +63,5 @@ let point () = random (width () -1), random (height () -1)
 let char () = random 255 |> Char.chr
 
 (* Returns true on failure TODO is this correct? *)
-let () = Controller.init ()
+let _ = Controller.init ()
 

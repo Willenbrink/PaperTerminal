@@ -1,13 +1,21 @@
 (* Second layer: Send commands to the IT8951 *)
 
+(* TODO we could in theory also encode the parameters of the command
+ * to prevent invalid read/writes.
+ *)
 let int_of_cmd = function
   | `Sys_run -> 0x1
   | `Standby -> 0x2
   | `Sleep -> 0x3
   | `Register_read -> 0x10
   | `Register_write -> 0x11
-  | `Burst_read_t -> 0x12 (* TODO t? *)
-  | `Burst_read_s -> 0x13
+  (* TODO Strange note in the datasheet regarding:
+   * Burst_read_trigger, burst_write, load_image, load_image_area
+   * "For these commands, the parameters are unnecessary when bit 0 of I80CPCR is false."
+   * How many bytes will be read/written when this is not set? Until the bus is closed?
+   *)
+  | `Burst_read_trigger -> 0x12
+  | `Burst_read_start -> 0x13
   | `Burst_write -> 0x14
   | `Burst_end -> 0x15
   | `Load_image -> 0x20
@@ -17,45 +25,53 @@ let int_of_cmd = function
   | `Dev_info -> 0x302
   | `DPY_Buf_Area -> 0x37
   | `VCOM -> 0x39
-  | _ -> failwith "Undefined command, check the spelling?"
 
 (* TODO annotate types: 8/16/32 bits *)
 (* TODO investigate whether we can transmit more than 2 bytes at once *)
-let write (preamble : int) (data : int) =
+
+let write_cmd cmd =
   Bus.(
     open_bus ();
-    send preamble;
+    send 0x6000;
     wait_for_bus ();
-    send data;
+    send (int_of_cmd cmd);
     close_bus ()
   )
 
 let write_data (data : int list) =
-  List.iter (write 0x0000) data
+  let aux data =
+    Bus.(
+      open_bus ();
+      send 0x0000;
+      wait_for_bus ();
+      send data;
+      close_bus ()
+    )
+  in
+  List.iter aux data
 
 let read_data amount =
   Bus.(
     open_bus ();
     send 0x1000;
     wait_for_bus ();
-    send 0x00; (* TODO Dummy value, is this necessary? *)
+    (* Dummy value, necessary according to data sheet *)
+    recv () |> ignore;
     wait_for_bus ();
     let retVal =
-      List.init amount (fun _ -> transfer 0)
+      List.init amount (fun _ -> recv ())
     in
     close_bus ();
     retVal
   )
 
+(* Only wraps read_data so the caller can use the datum without matching *)
 let read_datum () =
   match read_data 1 with
   | x::[] -> x
-  | _ -> failwith "Invalid read"
+  | _ -> failwith "Error: read_data 1 returns list with length != 1"
 
-let write_cmd cmd =
-  write 0x6000 (int_of_cmd cmd)
-
-let write_cmd_args cmd (args : int list) =
+let write_cmd_args cmd args =
   write_cmd cmd;
   write_data args
 
@@ -82,9 +98,12 @@ let rec addr_of_reg = function
   | `LISAR -> addr_of_reg `MCSR + 0x08
   | `LISAR2 -> addr_of_reg `LISAR + 0x02 (* Added here because we do not want addition to work on registers. *)
 
+(* Could in theory write/read more than 16 bit according to the datasheet.
+ * We don't use this functionality and instead write to multiple registers (LISAR/LISAR2)
+ *)
+let write_reg reg value =
+  write_cmd_args `Register_write [addr_of_reg reg; value]
+
 let read_reg reg =
   write_cmd_args `Register_read [addr_of_reg reg];
   read_datum ()
-
-let write_reg reg value =
-  write_cmd_args `Register_write [addr_of_reg reg; value]
