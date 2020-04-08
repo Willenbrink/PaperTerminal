@@ -1,8 +1,11 @@
 open Ctypes
 open Foreign
 
+(* First layer: Interact with the bus and transfer bytes *)
+
 (* See the dune file in ./lib *)
-let lib_bus = Dl.dlopen ~flags:[Dl.RTLD_LAZY] ~filename:(Unix.getcwd () ^ "/_build/default/lib/dllepd_stubs.so")
+let path_to_lib = Unix.getcwd () ^ "/_build/default/lib/dllepd_stubs.so"
+let lib_bus = Dl.dlopen ~flags:[Dl.RTLD_LAZY] ~filename:path_to_lib
 let funer name params = foreign ~from:lib_bus ~release_runtime_lock:false name params
 let vv = void @-> returning void
 
