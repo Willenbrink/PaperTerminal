@@ -1,6 +1,6 @@
 open Ctypes
 open Foreign
-open Interface
+open Controller
 
 let libIT = Dl.dlopen ~flags:[Dl.RTLD_LAZY] ~filename:("/opt/IT8951/eink-display/IT8951")
 
@@ -18,7 +18,7 @@ let bg = 0xFF
 
 let check (x,y) = assert (x >= 0 && y >= 0 && x < width () && y < height ())
 
-let free () = free_graphics
+let free () = Controller.free ()
 
 let plot (x,y) =
   check (x,y);
@@ -63,5 +63,5 @@ let point () = random (width () -1), random (height () -1)
 let char () = random 255 |> Char.chr
 
 (* Returns true on failure TODO is this correct? *)
-let () = init_graphics ()
+let () = Controller.init ()
 

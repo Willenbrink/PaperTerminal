@@ -1,4 +1,6 @@
-let dev_info : Cmd.device_info option ref = ref None
+type device_info = { width : int; height : int; address : int; fwversion : string; lutversion : string }
+
+let dev_info : device_info option ref = ref None
 
 let set_dev_info value = dev_info := Some value
 let get_dev_info () = match !dev_info with
