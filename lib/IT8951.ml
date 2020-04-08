@@ -37,32 +37,36 @@ let int_of_cmd = function
   | DPY_Buf_Area -> 0x37
   | VCOM -> 0x39
 
-let init () = Bcm.init ()
+let init () = Bus.init ()
 
-let free () = Bcm.free ()
+let free () = Bus.free ()
 
 (* TODO annotate types: 8/16/32 bits *)
 let write preamble data =
-  Bcm.open_bus ();
-  Bcm.send preamble;
-  Bcm.wait_for_bus ();
-  Bcm.send data;
-  Bcm.close_bus ()
+  Bus.(
+    open_bus ();
+    send preamble;
+    wait_for_bus ();
+    send data;
+    close_bus ()
+  )
 
 let write_data data =
   List.iter (write 0x0000) data
 
 let read_data amount =
-  Bcm.open_bus ();
-  Bcm.send 0x1000;
-  Bcm.wait_for_bus ();
-  Bcm.send 0x00; (* TODO Dummy value, is this necessary? *)
-  Bcm.wait_for_bus ();
-  let retVal =
-    List.init amount (fun _ -> Bcm.transfer 0)
-  in
-  Bcm.close_bus ();
-  retVal
+  Bus.(
+    open_bus ();
+    send 0x1000;
+    wait_for_bus ();
+    send 0x00; (* TODO Dummy value, is this necessary? *)
+    wait_for_bus ();
+    let retVal =
+      List.init amount (fun _ -> transfer 0)
+    in
+    close_bus ();
+    retVal
+  )
 
 let read_data_single () =
   match read_data 1 with

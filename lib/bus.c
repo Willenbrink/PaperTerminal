@@ -1,5 +1,5 @@
 #include <bcm2835.h>
-#include "bcm.h"
+#include "bus.h"
 
 #define CS 8
 #define HRDY 24
@@ -21,7 +21,7 @@ void closeBus()
   bcm2835_gpio_write(CS, HIGH);
 }
 
-int transfer(int value)
+uint16_t transfer(uint16_t value)
 {
   value = value & 0xFFFF;
   int retVal = 0x0000;

@@ -1,8 +1,9 @@
 open Ctypes
 open Foreign
 
-let libIT = Dl.dlopen ~flags:[Dl.RTLD_LAZY] ~filename:("/opt/IT8951/eink-display/IT8951")
-let funer name params = foreign ~from:libIT ~release_runtime_lock:false name params
+(* See the dune file in ./lib *)
+let lib_bus = Dl.dlopen ~flags:[Dl.RTLD_LAZY] ~filename:(Unix.getcwd () ^ "/_build/default/lib/dllepd_stubs.so")
+let funer name params = foreign ~from:lib_bus ~release_runtime_lock:false name params
 let vv = void @-> returning void
 
 let init = funer "initBCM" (void @-> returning bool)
@@ -15,4 +16,5 @@ let send value =
   let ret = transfer value in
   match ret with
   | 0 -> ()
+         (* TODO when are we reading these values? Is this safe to ignore? *)
   | _ -> print_endline ("Error when sending: returned >" ^ string_of_int ret ^ "<")
