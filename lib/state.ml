@@ -7,7 +7,15 @@ let get_dev_info () = match !dev_info with
   | Some x -> x
   | None -> failwith "No device_info set"
 
-let buffer : int array array option ref = ref None
+(* TODO this can likely be improved with functors
+ * Have a module containing the device info or width/height
+ * Implement a functor taking that module and creating an array accordingly
+ * This would do away with that "option ref"
+ *)
+
+type array = (int, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array2.t
+
+let buffer : array option ref = ref None
 
 let set_buffer value = buffer := Some value
 let get_buffer () = match !buffer with

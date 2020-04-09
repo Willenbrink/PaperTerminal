@@ -45,6 +45,24 @@ let write_data (data : int list) =
     close_bus ();
   )
 
+let write_data_array (data : State.array) (x,y,w,h) =
+  let start = Sys.time () in
+  Bus.(
+    open_bus ();
+    send 0x0000;
+    for j = 0 to h - 1 do
+      for i = 0 to w / 2 - 1 do
+        let indx = x + 2*i in
+        let indy = y + j in
+        let value = (data.{indx + 1, indy} lsl 8) lor data.{indx, indy} in
+        send value
+      done
+    done;
+    close_bus ()
+  );
+  let ende = Sys.time () in
+  Printf.printf "Wrote %i bytes in %fs\n" (w*h) (ende -. start)
+
 let read_data amount =
   Bus.(
     open_bus ();

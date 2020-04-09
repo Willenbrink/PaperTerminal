@@ -21,7 +21,7 @@ let int_of_rot = function
 
 let int_of_mode = function
   | `White -> 0
-  | `Unknown -> 1
+  | `Unknown -> 1 (* TODO what does this mode do? *)
   | `Slow -> 2
   | `Medium -> 3
   | `Fast -> 4
@@ -32,8 +32,6 @@ let split_32 value =
   (value land 0xFFFF, (value lsr 16) land 0xFFFF)
 
 let flatten_list xs = List.map (fun (x,y) -> [x;y]) xs |> List.concat
-
-
 
 let print_device_info {width; height; address; fwversion; lutversion} =
   Printf.(
@@ -109,6 +107,7 @@ let load_img_area_start image_info (x,y,w,h) =
 let load_img_end () =
   write_cmd `Load_image_end
 
+(*
 let load_image image_info area =
   (* TODO figure out something nicer than this *)
   let rec merger (acc : int list) (xs : int list) : int list = match xs with
@@ -131,8 +130,18 @@ let load_image image_info area =
     |> List.concat
     |> merger []
   in
-  burst_write (get_dev_info ()).address content;
+  write_data content;
   load_img_end ()
+   *)
+
+let load_image image_info ((x,y,w,h) as area) =
+  (State.get_dev_info ()).address
+  |> set_image_buffer_base_addr;
+  load_img_area_start image_info area;
+  write_data_array (State.get_buffer ()) area;
+  load_img_end ()
+
+
 (* TODO unused:
    let display_area_1bpp (x,y,w,h) 
    display_area_buffer
@@ -157,12 +166,15 @@ let get_image_info big_endian bpp rotation =
   lor ((int_of_bpp bpp) lsl 4)
   lor (int_of_rot rotation)
 
-let transmit_image area =
+let transmit ((_,_,w,h) as area) =
+  let start = Sys.time () in
   let area = validate_area area in
   let image_info = get_image_info false `Bpp8 `Down in
-  load_image image_info area
+  load_image image_info area;
+  let ende = Sys.time () in
+  Printf.printf "Transmitted image (%i x %i) in %fs\n" w h (ende -. start)
 
-let display_area (x,y,w,h) display_mode =
+let display (x,y,w,h) display_mode =
   let rec wait_for_display_ready () =
     match read_reg `LUTAFSR with
     | 0 -> ()
@@ -170,15 +182,6 @@ let display_area (x,y,w,h) display_mode =
   in
   wait_for_display_ready ();
   write_cmd_args `DPY_area [x; y; w; h; int_of_mode display_mode]
-
-let display area mode =
-  let area = validate_area area in
-  display_area area mode
-
-let display_buffer area mode =
-  let area = validate_area area in
-  transmit_image area;
-  display_area area mode
 
 let init () =
   (* Initialise bus *)
@@ -195,7 +198,15 @@ let init () =
   (* Initialise state used by other functions *)
   let dev_info = query_device_info () in
   State.set_dev_info dev_info;
-  State.set_buffer @@ Matrix.create dev_info.width dev_info.height 0xFF;
+  let buffer =
+    Bigarray.Array2.create
+      Bigarray.int8_unsigned
+      Bigarray.C_layout
+      dev_info.width
+      dev_info.height
+  in
+  Bigarray.Array2.fill buffer 0xFF;
+  State.set_buffer buffer;
 
   (* Display white screen *)
   display (0, 0, dev_info.width, dev_info.height) `White
