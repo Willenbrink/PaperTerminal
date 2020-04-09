@@ -125,13 +125,13 @@ let load_image image_info area =
   (State.get_dev_info ()).address
   |> set_image_buffer_base_addr;
   load_img_area_start image_info area;
-  print_endline "Starting buffer transfer";
-  State.get_buffer ()
-  |> Matrix.get_rows
-  |> List.concat
-  |> merger []
-  |> burst_write (get_dev_info ()).address;
-  print_endline "Ending buffer transfer";
+  let content =
+    State.get_buffer ()
+    |> Matrix.get_rows
+    |> List.concat
+    |> merger []
+  in
+  burst_write (get_dev_info ()).address content;
   load_img_end ()
 (* TODO unused:
    let display_area_1bpp (x,y,w,h) 

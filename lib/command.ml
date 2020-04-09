@@ -33,31 +33,24 @@ let write_cmd cmd =
   Bus.(
     open_bus ();
     send 0x6000;
-    wait_for_bus ();
     send (int_of_cmd cmd);
     close_bus ()
   )
 
 let write_data (data : int list) =
-  let aux data =
-    Bus.(
-      open_bus ();
-      send 0x0000;
-      wait_for_bus ();
-      send data;
-      close_bus ()
-    )
-  in
-  List.iter aux data
+  Bus.(
+    open_bus ();
+    send 0x0000;
+    List.iter send data;
+    close_bus ();
+  )
 
 let read_data amount =
   Bus.(
     open_bus ();
     send 0x1000;
-    wait_for_bus ();
     (* Dummy value, necessary according to data sheet *)
     recv () |> ignore;
-    wait_for_bus ();
     let retVal =
       List.init amount (fun _ -> recv ())
     in

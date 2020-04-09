@@ -19,6 +19,7 @@ let transfer = funer "transfer" (int @-> returning int)
 
 let send value =
   let ret = transfer value in
+  wait_for_bus ();
   match ret with
   | 0 -> ()
          (* TODO when are we reading these values? Is this safe to ignore? *)

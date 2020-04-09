@@ -39,7 +39,10 @@ bool initBCM()
   bcm2835_spi_begin();
   bcm2835_spi_setBitOrder(BCM2835_SPI_BIT_ORDER_MSBFIRST);      //default
   bcm2835_spi_setDataMode(BCM2835_SPI_MODE0);                   //default
-  bcm2835_spi_setClockDivider(BCM2835_SPI_CLOCK_DIVIDER_32);		//default
+  /* TODO Apparently even values are acceptable and 400 MHz / 20 results in 20 MHz
+   * This is the stated maximum of the IT8951. 16 also works and should be faster.
+   */
+  bcm2835_spi_setClockDivider(BCM2835_SPI_CLOCK_DIVIDER_16);
 
   bcm2835_gpio_fsel(CS, BCM2835_GPIO_FSEL_OUTP);
   bcm2835_gpio_fsel(HRDY, BCM2835_GPIO_FSEL_INPT);

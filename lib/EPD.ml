@@ -18,12 +18,6 @@ let load_image img ((x1,y1),(x2,y2) as a) =
   load_image !img (x1,y1,x2, y2)
 *)
 
-let display area mode =
-  display area mode
-
-let display_buffer area mode =
-  display_buffer area mode
-
 let display_all mode = display (get_screen ()) mode
 
 let display_buffer_all mode = display_buffer (get_screen ()) mode
@@ -42,7 +36,7 @@ let plot (y,x) =
     (buffer ()).(y).(x) <- fg
   with _ -> ()
 
-let line ((y1,x1) as p1, ((y2,x2) as p2)) =
+let line (p1, p2) =
   (* Printf.printf "Plotting (y:%i,x:%i) (y:%i,x:%i)\n" y1 x1 y2 x2; *)
   Bresenham.draw_line ~f:(fun x y -> plot (x,y)) ~p0:p1 ~p1:p2
 
