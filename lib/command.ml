@@ -45,23 +45,13 @@ let write_data (data : int list) =
     close_bus ();
   )
 
-let write_data_array (data : State.array) (x,y,w,h) =
-  let start = Sys.time () in
+let write_data_array send_f =
   Bus.(
     open_bus ();
     send 0x0000;
-    for j = 0 to h - 1 do
-      for i = 0 to w / 2 - 1 do
-        let indx = x + 2*i in
-        let indy = y + j in
-        let value = (data.{indx + 1, indy} lsl 8) lor data.{indx, indy} in
-        send value
-      done
-    done;
+    send_f send;
     close_bus ()
-  );
-  let ende = Sys.time () in
-  Printf.printf "Wrote %i bytes in %fs\n" (w*h) (ende -. start)
+  )
 
 let read_data amount =
   Bus.(
@@ -96,6 +86,7 @@ let rec addr_of_reg = function
   | `LUT01AF -> addr_of_reg `DISPLAY_BASE + 0x114 (* LUT0 and LUT1 Active Flag Reg *)
   | `UP0SR -> addr_of_reg `DISPLAY_BASE + 0x134 (* Update Parameter0 Setting Reg *)
   | `UP1SR -> addr_of_reg `DISPLAY_BASE + 0x138 (* Update Parameter1 Setting Reg *)
+  | `UP1SR2 -> addr_of_reg `UP1SR + 0x2 (* Update Parameter1 Setting Reg *)
   | `LUT0ABFRV -> addr_of_reg `DISPLAY_BASE + 0x13C (* LUT0 Alpha blend and Fill rectangle Value *)
   | `UPBBADDR -> addr_of_reg `DISPLAY_BASE + 0x17C (* Update Buffer Base Address *)
   | `LUT0IMXY -> addr_of_reg `DISPLAY_BASE + 0x180 (* LUT0 Image buffer X/Y offset Reg *)

@@ -7,6 +7,41 @@ let get_dev_info () = match !dev_info with
   | Some x -> x
   | None -> failwith "No device_info set"
 
+
+
+let big_endian = ref false
+(* Necessary because Polymorphic Variants don't have a determined type
+ * but ref only works with known types.
+ * TODO could perhaps be replaced with simple variants
+ *)
+let bpp : [ `Bpp1 | `Bpp2 | `Bpp3 | `Bpp4 | `Bpp8 ] ref = ref `Bpp1
+let rotation : [ `Down | `Left | `Right | `Up ] ref = ref `Down
+
+let int_of_bool = function true -> 1 | false -> 0
+
+let int_of_bpp = function
+  (* TODO packing *)
+  | `Bpp2 -> 0 (* Packing: 1100_1100 *)
+  | `Bpp3 -> 1 (* Packing: 1110_1110 *)
+  | `Bpp4 -> 2 (* Packing: 1111_1111 *)
+  | `Bpp8 -> 3 (* Packing: 1111_1111 *)
+  (* IT8951 does not support 1bpp transfer but we can display the image in 1bpp
+   * Therefore we transfer in "8bpp" and then tell the IT8951 to interpret it as 1bpp
+   *)
+  | `Bpp1 -> 3
+
+let int_of_rot = function
+  (* TODO Does the rotation in memory impact performance or anything? *)
+  | `Down -> 0
+  | `Right -> 1
+  | `Up -> 2
+  | `Left -> 3
+
+let get_image_info () =
+  ((int_of_bool !big_endian) lsl 8)
+  lor ((int_of_bpp !bpp) lsl 4)
+  lor (int_of_rot !rotation)
+
 (* TODO this can likely be improved with functors
  * Have a module containing the device info or width/height
  * Implement a functor taking that module and creating an array accordingly

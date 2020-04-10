@@ -3,22 +3,6 @@ open State
 
 (* Third layer: Control the IT8951 by sending commands *)
 
-let int_of_bool = function true -> 1 | false -> 0
-
-let int_of_bpp = function
-  (* TODO packing *)
-  | `Bpp2 -> 0 (* Packing: 1100_1100 *)
-  | `Bpp3 -> 1 (* Packing: 1110_1110 *)
-  | `Bpp4 -> 2 (* Packing: 1111_1111 *)
-  | `Bpp8 -> 3 (* Packing: 1111_1111 *)
-
-let int_of_rot = function
-  (* TODO Does the rotation in memory impact performance or anything? *)
-  | `Down -> 0
-  | `Right -> 1
-  | `Up -> 2
-  | `Left -> 3
-
 let int_of_mode = function
   | `White -> 0
   | `Unknown -> 1 (* TODO what does this mode do? *)
@@ -100,77 +84,102 @@ let load_img_start image_info =
   write_cmd_args `Load_image [image_info]
    *)
 
-let load_img_area_start image_info (x,y,w,h) =
-  let args = image_info :: [x;y;w;h] in
-  write_cmd_args `Load_image_area args
+(* TODO unused:
+ * let display_area_1bpp (x,y,w,h) 
+ * display_area_buffer
+ *)
 
-let load_img_end () =
-  write_cmd `Load_image_end
+let transmit ((x,y,w,h) as area) =
+  let get_16bit bpp data send = match bpp with
+    | `Bpp8 ->
+      for j = 0 to h - 1 do
+        for i = 0 to w / 2 - 1 do
+          let indx = x + 2*i in
+          let indy = y + j in
+          let value = (data.{indx + 1, indy} lsl 8) lor data.{indx, indy} in
+          send value
+        done
+      done
+    | `Bpp4 ->
+      for j = 0 to h - 1 do
+        for i = 0 to w / 4 - 1 do
+          let indx = x + 4*i in
+          let indy = y + j in
+          let value =
+                  ((data.{indx + 3, indy} land 0xF0) lsl 8)
+              lor ((data.{indx + 2, indy} land 0xF0) lsl 4)
+              lor ((data.{indx + 1, indy} land 0xF0) lsl 0)
+              lor ((data.{indx + 0, indy} land 0xF0) lsr 4)
+          in
+          send value
+        done
+      done
+    | `Bpp2 ->
+      for j = 0 to h - 1 do
+        for i = 0 to w / 8 - 1 do
+          let indx = x + 8*i in
+          let indy = y + j in
+          let value =
+                ((data.{indx + 7, indy} land 0xC0) lsl 8)
+            lor ((data.{indx + 6, indy} land 0xC0) lsl 6)
+            lor ((data.{indx + 5, indy} land 0xC0) lsl 4)
+            lor ((data.{indx + 4, indy} land 0xC0) lsl 2)
+            lor ((data.{indx + 3, indy} land 0xC0) lsl 0)
+            lor ((data.{indx + 2, indy} land 0xC0) lsr 2)
+            lor ((data.{indx + 1, indy} land 0xC0) lsr 4)
+            lor ((data.{indx + 0, indy} land 0xC0) lsr 6)
+          in
+          send value
+        done
+      done
+    | `Bpp1 ->
+      for j = 0 to h - 1 do
+        for i = 0 to w / 16 - 1 do
+          let indx = x + 16*i in
+          let indy = y + j in
+          let value =
+                ((data.{indx + 15, indy} land 0x80) lsl 8)
+            lor ((data.{indx + 14, indy} land 0x80) lsl 7)
+            lor ((data.{indx + 13, indy} land 0x80) lsl 6)
+            lor ((data.{indx + 12, indy} land 0x80) lsl 5)
+            lor ((data.{indx + 11, indy} land 0x80) lsl 4)
+            lor ((data.{indx + 10, indy} land 0x80) lsl 3)
+            lor ((data.{indx + 9, indy} land 0x80) lsl 2)
+            lor ((data.{indx + 8, indy} land 0x80) lsl 1)
+            lor ((data.{indx + 7, indy} land 0x80) lsl 0)
+            lor ((data.{indx + 6, indy} land 0x80) lsr 1)
+            lor ((data.{indx + 5, indy} land 0x80) lsr 2)
+            lor ((data.{indx + 4, indy} land 0x80) lsr 3)
+            lor ((data.{indx + 3, indy} land 0x80) lsr 4)
+            lor ((data.{indx + 2, indy} land 0x80) lsr 5)
+            lor ((data.{indx + 1, indy} land 0x80) lsr 6)
+            lor ((data.{indx + 0, indy} land 0x80) lsr 7)
+          in
+          send value
+        done
+      done
 
-(*
-let load_image image_info area =
-  (* TODO figure out something nicer than this *)
-  let rec merger (acc : int list) (xs : int list) : int list = match xs with
-    | [] -> acc
-    | x::y::xs ->
-      let value = (x lsl 8) lor y in
-      merger (value::acc) xs
-    | _ -> failwith "Invalid size of area"
+    | _ -> failwith "Cant handle that!"
   in
+
+  let start = Sys.time () in
+  let image_info = State.get_image_info () in
+  let w = match !State.bpp with `Bpp1 -> w/8 | _ -> w in
+  let args = image_info :: [x;y;w;h] in
   (* Do not set the address repeatedly, only change when we use a second buffer in memory.
    * Can perhaps be used for some cool effects like moving the address 800*20 bytes along
    * to easily scroll on the screen without retransmitting the whole image. TODO
-   *)
-  (State.get_dev_info ()).address
-  |> set_image_buffer_base_addr;
-  load_img_area_start image_info area;
-  let content =
-    State.get_buffer ()
-    |> Matrix.get_rows
-    |> List.concat
-    |> merger []
-  in
-  write_data content;
-  load_img_end ()
-   *)
-
-let load_image image_info ((x,y,w,h) as area) =
-  (State.get_dev_info ()).address
-  |> set_image_buffer_base_addr;
-  load_img_area_start image_info area;
-  write_data_array (State.get_buffer ()) area;
-  load_img_end ()
-
-
-(* TODO unused:
-   let display_area_1bpp (x,y,w,h) 
-   display_area_buffer
-*)
-
-let validate_area (x,y,w,h) =
-  (* Assert the area is within bounds:
-   * Check first upper left corner and after rounding up the bottom right corner.
-   * Prevents w = -1 from succeeding.
-   *)
-  assert (w >= 0 && h >= 0);
-  (* TODO always draw 2 pixels, therefore the displayed area must be rounded
-   * This is only relevant in the x direction.
-   *)
-  let w = w + w mod 2 in
-  assert (x + w <= (get_dev_info ()).width);
-  assert (y + h <= (get_dev_info ()).height);
-  (x,y,w,h)
-
-let get_image_info big_endian bpp rotation =
-  ((int_of_bool big_endian) lsl 8)
-  lor ((int_of_bpp bpp) lsl 4)
-  lor (int_of_rot rotation)
-
-let transmit ((_,_,w,h) as area) =
+     (State.get_dev_info ()).address
+     |> set_image_buffer_base_addr;
+  *)
+  write_cmd_args `Load_image_area args;
   let start = Sys.time () in
-  let area = validate_area area in
-  let image_info = get_image_info false `Bpp8 `Down in
-  load_image image_info area;
+  State.get_buffer ()
+  |> get_16bit !State.bpp
+  |> write_data_array;
+  let ende = Sys.time () in
+  Printf.printf "Wrote %i bytes in %fs\n" (w*h) (ende -. start);
+  write_cmd `Load_image_end;
   let ende = Sys.time () in
   Printf.printf "Transmitted image (%i x %i) in %fs\n" w h (ende -. start)
 
@@ -181,7 +190,17 @@ let display (x,y,w,h) display_mode =
     | _ -> wait_for_display_ready ()
   in
   wait_for_display_ready ();
-  write_cmd_args `DPY_area [x; y; w; h; int_of_mode display_mode]
+  match !State.bpp with
+  | `Bpp1 ->
+    read_reg `UP1SR2 lor 4
+    |> write_reg `UP1SR2;
+    write_reg `BGVR 0x00FF; (* TODO reread sample code *)
+    write_cmd_args `DPY_area [x; y; w; h; int_of_mode display_mode];
+    wait_for_display_ready ();
+    read_reg `UP1SR2 land (Int.neg 4)
+    |> write_reg `UP1SR2
+  | `Bpp2 | `Bpp4 | `Bpp8 ->
+    write_cmd_args `DPY_area [x; y; w; h; int_of_mode display_mode]
 
 let init () =
   (* Initialise bus *)
@@ -200,7 +219,7 @@ let init () =
   State.set_dev_info dev_info;
   let buffer =
     Bigarray.Array2.create
-      Bigarray.int8_unsigned
+      Bigarray.int8_unsigned (* Elements of the array *)
       Bigarray.C_layout
       dev_info.width
       dev_info.height
