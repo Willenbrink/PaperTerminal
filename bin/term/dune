@@ -1,5 +1,5 @@
 (executable
-  (name term)
+  (name main)
   (libraries epd ctypes ctypes.foreign))
 
 (env
