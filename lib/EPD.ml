@@ -58,7 +58,7 @@ let repeat f =
   done
 
 let test_points () =
-  draw_points 1000;
+  draw_points 10000;
   refresh `Fast
 
 let test_lines () =

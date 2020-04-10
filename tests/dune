@@ -1,6 +1,8 @@
 (tests
   (names
     init
+    diag
     lines
+    points
     )
   (libraries epd))
