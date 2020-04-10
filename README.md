@@ -1,39 +1,47 @@
 # PaperTerminal
-This project enables you to use the IT8951 HAT to display a terminal on an E-Paper Display (EPD).
-In this respect it's quite similar to PaperTTY(https://github.com/joukos/PaperTTY) which is implemented in Python.
+## Summary
+This project provides a library to interact with the Waveshare E-Ink Displays written in OCaml. It is intended to run on a Raspberry Pi and interact with the IT8951 HAT via SPI.
+A future goal for this project is to provide executables which explore the usage of this library, some of which could be: a terminal, a VNC client, a kernel module to implement a graphics driver or a custom/adapted GUI library.
 
-Improvements made by this project:
-* Support for the IT8951
-* Performance as its written in a compiled language
-* Better drawing algorithm than a simple bounding box (draw all connected dirty areas at once but draw unconnected areas separately)
-* Done by myself as a hobby. Thats the primary reason ;-)
+It is quite similar to PaperTTY(https://github.com/joukos/PaperTTY) which is implemented in Python and provides both a terminal and VNC client. As this is a personal hobby PaperTTY is superior in almost all aspects.
 
-Lacking features:
-* Fonts are not supported
-* UTF-8 is not supported
-* Resizing the terminal is currently not possible
+## Structure
+The source code is split into three directories:
+* lib: contains the library to interact with the display, more details below
+* bin: contains the executables which use the library, currently only contains the terminal emulator
+* tests: contains all the tests
 
-# Make
-Before compiling the project, add a softlink to a folder in the IT8951 project named either eink-display or emulator depending on what functionality you want.
-"ln -s ~/Path/To/IT8951/EPD ./EPD" should do the job.
-This structure is not set in stone and will likely change.
+The library is split into four layers, each of which is concerned with a specific abstraction:
+* Bus and bus.c/h: Implements the SPI interface with the IT8951
+* Command: Implements the commands defined by the IT8951 and memory/register access
+* Controller and State: Provides an interface to interact with the screen on a simplified level: It allows transmitting the buffer to the IT8951 and displaying it onto the E-Ink Display.
+* EPD and Bresenham: Provides facilities to quickly test the library, i.e. plotting dots and lines. This layer will perhaps be moved into the bin directory.
 
-Execute run.sh. It should automatically compile both the C and OCaml source and execute the program.
-Due to the fact that the display can only be accessed by one program at once it calls "killall term.exe".
+## Dependencies
+* [bcm2835 library](http://www.airspayce.com/mikem/bcm2835/)
+* OCaml compiler
+* dune, ctypes, ctypes-foreign (see `dune external-lib-deps $build_target`)
+* utop for interactive usage
 
-# Dependencies
-* OCaml (>= 4.02)
-* GCC
-* ctypes and ctypes-foreign (see dune in project root)
-* EPD, provided by my fork of the IT8951 repository
+## Building
+Run either of the following commands. Root privileges are necessary to access the pins.
+* `dune exec bin/term.exe` for the terminal emulator
+* `dune utop lib` for interactive utop REPL with the library
+* `dune test` to run the tests specified in tests/dune
 
-# Additional Notes
-My goal is to run this project on the Raspberry Pi 3A+. Additionally my preferred distro is Voidlinux. Because Void does not have as good support of the Pis as I wished getting it to run involved some work. I chose to run U-Boot first to enable some flexibility in the future (Network boot, USB boot, independent layer below Linux which always works). This is in theory quite simple:
+## Additional Notes
+My goal is to run this project on the Raspberry Pi 3A+. My distro of choice is Void Linux. Unfortunately Void does not have good support of the newer Pis and getting it to run involved some work. I chose to run U-Boot first to enable some flexibility in the future (Network boot, USB boot, independent layer below Linux which always works). This is in theory quite simple:
 * Flash the Linux image
 * Place the U-Boot image (see below) alongside the kernel in the /boot partition/directory
-* Modify config.txt: "kernel=u-boot.img" and "arm_64bit=1\ndevice_tree_address=0x100\ndevice_tree_end=0x8000" (perhaps these are unnecessary as this should already be covered by the configuration below)
+* Append to config.txt:\
+kernel=u-boot.img\
+(the following are perhaps unnecessary)\
+arm_64bit=1\
+device_tree_address=0x100\
+device_tree_end=0x8000\
 * Freeze the kernel and firmware as updates to them break the system via `xbps-pkgdb -m hold rpi-firmware rpi-kernel`
-* Update and ignore the errors fsck reports for the SD card (where do they even come from? f3 states that the card is fine...)
+
+Be careful to gracefully shut down the Pi at all times as power loss corrupts the SD card (as indicated by the fsck after reboot)
 
 ## Creating the U-Boot image
 The mainline U-Boot repository has support for most Raspberry Pis and their features.
