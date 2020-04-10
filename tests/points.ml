@@ -3,7 +3,7 @@ open EPD
 
 let () =
   Controller.init ();
-  for _ = 0 to 3 do
+  for _ = 0 to 19 do
     test_points ()
   done;
   Controller.free ()

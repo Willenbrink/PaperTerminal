@@ -80,18 +80,19 @@ let set_image_buffer_base_addr address =
   write_reg `LISAR wordL
 
 (* TODO unused because transmitting the area too does not affect performance
-let load_img_start image_info =
-  write_cmd_args `Load_image [image_info]
+   let load_img_start image_info =
+   write_cmd_args `Load_image [image_info]
+   let display_area_buffer =
    *)
 
 (* TODO unused:
- * let display_area_1bpp (x,y,w,h) 
- * display_area_buffer
  *)
 
 let transmit ((x,y,w,h) as area) =
   let get_16bit bpp data send = match bpp with
     | `Bpp8 ->
+
+
       for j = 0 to h - 1 do
         for i = 0 to w / 2 - 1 do
           let indx = x + 2*i in
@@ -204,6 +205,7 @@ let display (x,y,w,h) display_mode =
 
 let init () =
   (* Initialise bus *)
+  (* TODO handle concurrent applications *)
   begin
     if not (Bus.init ())
     then failwith "Bus initialisation failed, insufficient permissions?"

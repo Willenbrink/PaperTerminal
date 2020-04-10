@@ -63,7 +63,7 @@ let test_points () =
 
 let test_lines () =
   draw_lines 100;
-  refresh `Medium
+  refresh `Fast
 
 let _ =
   Controller.init
