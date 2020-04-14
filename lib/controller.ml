@@ -5,7 +5,12 @@ open State
 
 let int_of_mode = function
   | `White -> 0
-  | `Unknown -> 1 (* TODO what does this mode do? *)
+  (* TODO what does this mode do? And has this been switched around?
+   * Unknown works well whereas fast repeatedly fails to display anything.
+   * Fast only works for bpp8 and Unknown is only quick for the other modes.
+   * TODO this needs further investigation, because the above sounds improbable.
+   *)
+  | `Unknown -> 1
   | `Slow -> 2
   | `Medium -> 3
   | `Fast -> 4
@@ -88,11 +93,9 @@ let set_image_buffer_base_addr address =
 (* TODO unused:
  *)
 
-let transmit ((x,y,w,h) as area) =
+let transmit ((x,y,w,h)) =
   let get_16bit bpp data send = match bpp with
     | `Bpp8 ->
-
-
       for j = 0 to h - 1 do
         for i = 0 to w / 2 - 1 do
           let indx = x + 2*i in
@@ -174,12 +177,14 @@ let transmit ((x,y,w,h) as area) =
      |> set_image_buffer_base_addr;
   *)
   write_cmd_args `Load_image_area args;
-  let start = Sys.time () in
-  State.get_buffer ()
-  |> get_16bit !State.bpp
-  |> write_data_array;
-  let ende = Sys.time () in
-  Printf.printf "Wrote %i bytes in %fs\n" (w*h) (ende -. start);
+  begin
+    let start = Sys.time () in
+    State.get_buffer ()
+    |> get_16bit !State.bpp
+    |> write_data_array;
+    let ende = Sys.time () in
+    Printf.printf "Wrote %i bytes in %fs\n" (w*h) (ende -. start)
+  end;
   write_cmd `Load_image_end;
   let ende = Sys.time () in
   Printf.printf "Transmitted image (%i x %i) in %fs\n" w h (ende -. start)
@@ -217,12 +222,12 @@ let init () =
   set_vcom vcom;
 
   (* Initialise state used by other functions *)
-  let dev_info = query_device_info () in
-  State.set_dev_info dev_info;
+  (* TODO get_dev_info modifies dev_info *)
+  query_device_info ()
+  |> State.set_dev_info;
+  let dev_info = State.get_dev_info () in
   let buffer =
-    Bigarray.Array2.create
-      Bigarray.int8_unsigned (* Elements of the array *)
-      Bigarray.C_layout
+    State.create_buffer
       dev_info.width
       dev_info.height
   in

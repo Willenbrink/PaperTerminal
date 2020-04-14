@@ -35,7 +35,7 @@ let point () = random (height () -1), random (width () -1)
 let char () = random 255 |> Char.chr
 
 
-let plot (y,x) =
+let plot (x,y) =
   try
     (buffer ()).{x,y} <- fg
   with _ -> print_endline "Out_of_bounds plot ignored"
@@ -65,5 +65,50 @@ let test_lines () =
   draw_lines 100;
   refresh `Fast
 
-let _ =
-  Controller.init
+let loopfb () =
+  let fb = Unix.openfile "/dev/fb0" [Unix.O_RDONLY] 0o664 in
+  let loop () =
+    Unix.lseek fb 0 Unix.SEEK_SET
+    |> ignore;
+    let ic = Unix.in_channel_of_descr fb in
+    let rec read i () =
+      if i <= 0
+      then Seq.Nil
+      else Seq.Cons ((input_byte ic),(read (i-1)))
+    in
+    let size = Unix.lseek fb 0 Unix.SEEK_END in
+    let size = 800 * 600 in
+    (*
+    let bytes = Bytes.create size in
+    Unix.read fb bytes 0 size
+    |> Printf.printf "Read %i bytes\n";
+       *)
+    flush_all ();
+    let framebuffer =
+      read size
+      |> Array.of_seq
+      |> fun x -> Printf.printf "Read %i bytes\n" (Array.length x); x
+      |> Bigarray.Array1.of_array Bigarray.Int8_unsigned Bigarray.c_layout
+      |> Bigarray.genarray_of_array1
+      |> fun x -> Bigarray.reshape_2 x 800 600
+    in
+  (*
+  let buffer =
+    Unix.map_file fb
+      Bigarray.int8_unsigned Bigarray.c_layout false
+      [|800;600|]
+    |> Bigarray.array2_of_genarray
+  in
+  *)
+      Bigarray.Array2.blit framebuffer (State.get_buffer ())
+  in
+  try
+    while true do
+      loop ();
+      refresh `Medium
+    done
+  with
+  | e ->
+    print_endline "Failed";
+    Unix.close fb;
+    raise e

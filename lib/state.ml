@@ -1,20 +1,9 @@
-type device_info = { width : int; height : int; address : int; fwversion : string; lutversion : string }
-
-let dev_info : device_info option ref = ref None
-
-let set_dev_info value = dev_info := Some value
-let get_dev_info () = match !dev_info with
-  | Some x -> x
-  | None -> failwith "No device_info set"
-
-
-
 let big_endian = ref false
 (* Necessary because Polymorphic Variants don't have a determined type
  * but ref only works with known types.
  * TODO could perhaps be replaced with simple variants
  *)
-let bpp : [ `Bpp1 | `Bpp2 | `Bpp3 | `Bpp4 | `Bpp8 ] ref = ref `Bpp1
+let bpp : [ `Bpp1 | `Bpp2 | `Bpp3 | `Bpp4 | `Bpp8 ] ref = ref `Bpp8
 let rotation : [ `Down | `Left | `Right | `Up ] ref = ref `Down
 
 let int_of_bool = function true -> 1 | false -> 0
@@ -42,6 +31,25 @@ let get_image_info () =
   lor ((int_of_bpp !bpp) lsl 4)
   lor (int_of_rot !rotation)
 
+type device_info = { width : int; height : int; address : int; fwversion : string; lutversion : string }
+
+let dev_info : device_info option ref = ref None
+
+let set_dev_info value = dev_info := Some value
+let get_dev_info () = match !dev_info with
+  | Some {width; height; address; fwversion; lutversion} ->
+    (*
+    let width,height =
+      match !rotation with
+      | `Down | `Up -> width,height
+      | `Left | `Right -> height,width
+    in
+       *)
+    {width; height; address; fwversion; lutversion}
+
+  | None -> failwith "No device_info set"
+
+
 (* TODO this can likely be improved with functors
  * Have a module containing the device info or width/height
  * Implement a functor taking that module and creating an array accordingly
@@ -49,6 +57,11 @@ let get_image_info () =
  *)
 
 type array = (int, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array2.t
+
+let create_buffer x y = 
+  Bigarray.Array2.create
+    Bigarray.int8_unsigned
+    Bigarray.C_layout x y
 
 let buffer : array option ref = ref None
 

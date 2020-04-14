@@ -5,7 +5,7 @@
   (foreign_stubs
     (language c)
     (names bus))
-  (libraries ctypes ctypes.foreign)
+  (libraries ctypes ctypes.foreign pcf-parser)
   ; This entry is copied from Camelwm which binds to the X11 lib in a similar way
   ; https://github.com/SkyVault/Camelwm/blob/master/dune
   ; This is also mentioned in the quickstart of the dune documentation
