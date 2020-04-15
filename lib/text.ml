@@ -23,25 +23,17 @@ let draw_char c (x_pos, y_pos) =
     |> Pcf.Glyph.get_bitmap (get_font ())
   in
   let array = match array with
-    | None -> failwith "Char not present"
+    | None -> Array.init 9 (fun _ -> Array.make 15 true)
     | Some value -> value
   in
   let x_size = Array.length array.(0) in
   let y_size = Array.length array in
-  let buffer = State.create_buffer x_size y_size in
-  Printf.printf "Y: %i; X: %i" y_pos x_pos;
-  flush_all ();
   for j = 0 to y_size - 1 do
     for i = 0 to x_size - 1 do
       if array.(j).(i)
       then
-        EPD.plot (y_pos + j, x_pos + i)
+        EPD.color (y_pos + j, x_pos + i) EPD.fg
+      else
+        EPD.color (y_pos + j, x_pos + i) EPD.bg
     done
-  done;
-  (*
-  Bigarray.Array2.blit buffer (State.get_buffer ());
-  EPD.get_screen ()
-  |> Controller.transmit;
-     *)
-  Controller.transmit (y_pos, x_pos, 20, 20);
-  Controller.display (y_pos, x_pos, 20, 20) `Unknown
+  done

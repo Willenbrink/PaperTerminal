@@ -30,19 +30,23 @@ let rgb r g b = (r+g+b)/3
 
 let random int = Random.int int
 
-let point () = random (height () -1), random (width () -1)
+let point () = random (width () -1), random (height () -1)
 
 let char () = random 255 |> Char.chr
 
+let color (x,y) color =
+  try
+    (buffer ()).{x,y} <- color
+  with e ->
+    Printf.eprintf "OOB plot: X: %i - Y: %i - C: %04x\n" x y color;
+    flush stderr;
+    raise e
 
 let plot (x,y) =
-  try
-    (buffer ()).{x,y} <- fg
-  with _ -> print_endline "Out_of_bounds plot ignored"
+  color (x,y) fg
 
-let line (p1, p2) =
-  (* Printf.printf "Plotting (y:%i,x:%i) (y:%i,x:%i)\n" y1 x1 y2 x2; *)
-  Bresenham.draw_line ~f:(fun x y -> plot (x,y)) ~p0:p1 ~p1:p2
+let line (p0,p1) =
+  Bresenham.draw_line ~f:(fun x y -> plot (x,y)) ~p0 ~p1
 
 let draw_points amount =
   List.init amount (fun _ -> point ())
@@ -77,6 +81,7 @@ let loopfb () =
       else Seq.Cons ((input_byte ic),(read (i-1)))
     in
     let size = Unix.lseek fb 0 Unix.SEEK_END in
+    ignore size;
     let size = 800 * 600 in
     (*
     let bytes = Bytes.create size in

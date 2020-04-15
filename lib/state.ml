@@ -3,7 +3,8 @@ let big_endian = ref false
  * but ref only works with known types.
  * TODO could perhaps be replaced with simple variants
  *)
-let bpp : [ `Bpp1 | `Bpp2 | `Bpp3 | `Bpp4 | `Bpp8 ] ref = ref `Bpp8
+let bpp : [ `Bpp1 | `Bpp2 | `Bpp3 | `Bpp4 | `Bpp8 ] ref = ref `Bpp1
+(* TODO Left/Right not working currently. Buffer must be reallocated to adjust width/height. *)
 let rotation : [ `Down | `Left | `Right | `Up ] ref = ref `Down
 
 let int_of_bool = function true -> 1 | false -> 0
@@ -58,7 +59,7 @@ let get_dev_info () = match !dev_info with
 
 type array = (int, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array2.t
 
-let create_buffer x y = 
+let create_buffer x y =
   Bigarray.Array2.create
     Bigarray.int8_unsigned
     Bigarray.C_layout x y

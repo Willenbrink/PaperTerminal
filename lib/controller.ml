@@ -90,104 +90,61 @@ let set_image_buffer_base_addr address =
    let display_area_buffer =
    *)
 
-(* TODO unused:
+(*
+ * aggregate combines the values of a variable amount of pixels into one 16bit value.
+ * To do this, the significant bits are determined and every value shifted to the right
+ * After doing so it is combined into one register by shifting + oring the values
  *)
+let aggregate buffer amount x y =
+  let sig_bits = 16 / amount in
+  let value = ref 0 in
+  for i = 1 to amount do
+    let new_pixel = buffer.{x + amount - i, y} lsr (8 - sig_bits) in
+    value := (!value lsl sig_bits) lor new_pixel;
+  done;
+  !value
 
-let transmit ((x,y,w,h)) =
-  let get_16bit bpp data send = match bpp with
-    | `Bpp8 ->
-      for j = 0 to h - 1 do
-        for i = 0 to w / 2 - 1 do
-          let indx = x + 2*i in
-          let indy = y + j in
-          let value = (data.{indx + 1, indy} lsl 8) lor data.{indx, indy} in
-          send value
-        done
-      done
-    | `Bpp4 ->
-      for j = 0 to h - 1 do
-        for i = 0 to w / 4 - 1 do
-          let indx = x + 4*i in
-          let indy = y + j in
-          let value =
-                  ((data.{indx + 3, indy} land 0xF0) lsl 8)
-              lor ((data.{indx + 2, indy} land 0xF0) lsl 4)
-              lor ((data.{indx + 1, indy} land 0xF0) lsl 0)
-              lor ((data.{indx + 0, indy} land 0xF0) lsr 4)
-          in
-          send value
-        done
-      done
-    | `Bpp2 ->
-      for j = 0 to h - 1 do
-        for i = 0 to w / 8 - 1 do
-          let indx = x + 8*i in
-          let indy = y + j in
-          let value =
-                ((data.{indx + 7, indy} land 0xC0) lsl 8)
-            lor ((data.{indx + 6, indy} land 0xC0) lsl 6)
-            lor ((data.{indx + 5, indy} land 0xC0) lsl 4)
-            lor ((data.{indx + 4, indy} land 0xC0) lsl 2)
-            lor ((data.{indx + 3, indy} land 0xC0) lsl 0)
-            lor ((data.{indx + 2, indy} land 0xC0) lsr 2)
-            lor ((data.{indx + 1, indy} land 0xC0) lsr 4)
-            lor ((data.{indx + 0, indy} land 0xC0) lsr 6)
-          in
-          send value
-        done
-      done
-    | `Bpp1 ->
-      for j = 0 to h - 1 do
-        for i = 0 to w / 16 - 1 do
-          let indx = x + 16*i in
-          let indy = y + j in
-          let value =
-                ((data.{indx + 15, indy} land 0x80) lsl 8)
-            lor ((data.{indx + 14, indy} land 0x80) lsl 7)
-            lor ((data.{indx + 13, indy} land 0x80) lsl 6)
-            lor ((data.{indx + 12, indy} land 0x80) lsl 5)
-            lor ((data.{indx + 11, indy} land 0x80) lsl 4)
-            lor ((data.{indx + 10, indy} land 0x80) lsl 3)
-            lor ((data.{indx + 9, indy} land 0x80) lsl 2)
-            lor ((data.{indx + 8, indy} land 0x80) lsl 1)
-            lor ((data.{indx + 7, indy} land 0x80) lsl 0)
-            lor ((data.{indx + 6, indy} land 0x80) lsr 1)
-            lor ((data.{indx + 5, indy} land 0x80) lsr 2)
-            lor ((data.{indx + 4, indy} land 0x80) lsr 3)
-            lor ((data.{indx + 3, indy} land 0x80) lsr 4)
-            lor ((data.{indx + 2, indy} land 0x80) lsr 5)
-            lor ((data.{indx + 1, indy} land 0x80) lsr 6)
-            lor ((data.{indx + 0, indy} land 0x80) lsr 7)
-          in
-          send value
-        done
-      done
+let get_16bit (x,y,w,h) bpp data send =
+  for j = 0 to h - 1 do
+    (* TODO why that? *)
+    let indy = y + h - 1 - j in
+    let aggregate' amount x = aggregate data amount x indy in
+    let amount = 16 / match bpp with
+      | `Bpp8 -> 8
+      | `Bpp4 -> 4
+      | `Bpp3 -> failwith "Not tightly packed"
+      | `Bpp2 -> 2
+      | `Bpp1 -> 1
+    in
+    for i = 0 to w / amount - 1 do
+      let indx = x + amount*i in
+      aggregate' amount indx
+      |> send
+    done
+  done
 
-    | _ -> failwith "Cant handle that!"
-  in
 
-  let start = Sys.time () in
+let transmit (x,y,w,h) =
   let image_info = State.get_image_info () in
-  let w = match !State.bpp with `Bpp1 -> w/8 | _ -> w in
-  let args = image_info :: [x;y;w;h] in
   (* Do not set the address repeatedly, only change when we use a second buffer in memory.
    * Can perhaps be used for some cool effects like moving the address 800*20 bytes along
    * to easily scroll on the screen without retransmitting the whole image. TODO
      (State.get_dev_info ()).address
      |> set_image_buffer_base_addr;
   *)
-  write_cmd_args `Load_image_area args;
   begin
-    let start = Sys.time () in
-    State.get_buffer ()
-    |> get_16bit !State.bpp
-    |> write_data_array;
-    let ende = Sys.time () in
-    Printf.printf "Wrote %i bytes in %fs\n" (w*h) (ende -. start)
+    (* Bpp1 is weird because the IT8951 does not support 1 bit transfer.
+     * Therefore we disguise Bpp1 as Bpp8 with an eigth of the width
+     * and use the firmware to later interpret this as a fullsize Bpp1 image
+     *)
+    let w = match !State.bpp with `Bpp1 -> w/8 | _ -> w in
+    let args = image_info :: [x;y;w;h] in
+    write_cmd_args `Load_image_area args;
   end;
-  write_cmd `Load_image_end;
-  let ende = Sys.time () in
-  Printf.printf "Transmitted image (%i x %i) in %fs\n" w h (ende -. start)
+  State.get_buffer ()
+  |> get_16bit (x,y,w,h) !State.bpp
+  |> write_data_array;
+  write_cmd `Load_image_end
 
 let display (x,y,w,h) display_mode =
   let rec wait_for_display_ready () =
@@ -207,8 +164,11 @@ let display (x,y,w,h) display_mode =
     |> write_reg `UP1SR2
   | `Bpp2 | `Bpp4 | `Bpp8 ->
     write_cmd_args `DPY_area [x; y; w; h; int_of_mode display_mode]
+  | `Bpp3 -> failwith "bpp3 not implemented"
 
 let init () =
+  (* TODO remove once code runs stable *)
+  Printexc.record_backtrace true;
   (* Initialise bus *)
   (* TODO handle concurrent applications *)
   begin
