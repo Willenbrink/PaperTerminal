@@ -4,5 +4,6 @@
     diag
     lines
     points
+    loading_bar
     )
   (libraries epd))
