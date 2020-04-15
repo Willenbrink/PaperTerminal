@@ -4,7 +4,7 @@ open Foreign
 (* First layer: Interact with the bus and transfer bytes *)
 
 (* See the dune file in ./lib.
-   Currently hardcoded as cwd is not the root of the project but the cwd of the shell. *)
+   TODO Currently hardcoded as cwd is not the root of the project but the cwd of the shell. *)
 let path_to_lib = "/opt/PaperTerminal/_build/default/lib/dllepd_stubs.so"
 let lib_bus = Dl.dlopen ~flags:[Dl.RTLD_LAZY] ~filename:path_to_lib
 let funer name params = foreign ~from:lib_bus ~release_runtime_lock:false name params
