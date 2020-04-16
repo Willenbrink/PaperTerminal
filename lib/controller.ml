@@ -3,17 +3,24 @@ open State
 
 (* Third layer: Control the IT8951 by sending commands *)
 
+type mode =
+  | White
+  | Unknown
+  | Slow
+  | Medium
+  | Fast
+
 let int_of_mode = function
-  | `White -> 0
+  | White -> 0
   (* TODO what does this mode do? And has this been switched around?
    * Unknown works well whereas fast repeatedly fails to display anything.
    * Fast only works for bpp8 and Unknown is only quick for the other modes.
    * TODO this needs further investigation, because the above sounds improbable.
    *)
-  | `Unknown -> 1
-  | `Slow -> 2
-  | `Medium -> 3
-  | `Fast -> 4
+  | Unknown -> 1
+  | Slow -> 2
+  | Medium -> 3
+  | Fast -> 4
 
 (* TODO move somewhere appropriate *)
 let split_32 value =
@@ -195,7 +202,7 @@ let init () =
   State.set_buffer buffer;
 
   (* Display white screen *)
-  display (0, 0, dev_info.width, dev_info.height) `White
+  display (0, 0, dev_info.width, dev_info.height) White
 
 let free () =
   Bus.free ()

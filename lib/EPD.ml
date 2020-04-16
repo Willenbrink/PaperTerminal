@@ -63,11 +63,11 @@ let repeat f =
 
 let test_points () =
   draw_points 10000;
-  refresh `Fast
+  refresh Fast
 
 let test_lines () =
   draw_lines 100;
-  refresh `Fast
+  refresh Fast
 
 let loopfb () =
   let fb = Unix.openfile "/dev/fb0" [Unix.O_RDONLY] 0o664 in
@@ -110,7 +110,7 @@ let loopfb () =
   try
     while true do
       loop ();
-      refresh `Medium
+      refresh Medium
     done
   with
   | e ->

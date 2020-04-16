@@ -15,7 +15,7 @@ let rec loop () =
     let area = x*8,y*16,x*8+w,y*16+h in
     try
       Controller.transmit area;
-      Controller.display area `Fast
+      Controller.display area Fast
     with
       _ -> print_endline "Ignored out-of-bounds transmit"
   in
@@ -36,7 +36,7 @@ let rec loop () =
     done
   done;
          *)
-  EPD.refresh `Medium;
+  EPD.refresh Medium;
   loop ()
 
   (*
