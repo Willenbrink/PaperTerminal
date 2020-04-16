@@ -30,7 +30,7 @@ let print_device_info {width; height; address; fwversion; lutversion} =
   )
 
 let query_device_info () =
-  write_cmd `Dev_info;
+  write_cmd Query_info;
   match read_data 20 with
   | (width::height::addressL::addressH::rest) ->
     let rest =
@@ -63,30 +63,30 @@ let burst_write address content =
     [split_32 address; split_32 amount]
     |> flatten_list
   in
-  write_cmd_args `Burst_write args;
+  write_cmd_args Burst_write args;
   write_data content;
-  write_cmd `Burst_end
+  write_cmd Burst_end
 
 let burst_read address amount =
   let args =
     [split_32 address; split_32 amount]
     |> flatten_list
   in
-  write_cmd_args `Burst_read_trigger args;
-  write_cmd `Burst_read_start;
+  write_cmd_args Burst_read_trigger args;
+  write_cmd Burst_read_start;
   let result = read_data amount in
-  write_cmd `Burst_end;
+  write_cmd Burst_end;
   result
 
 let set_image_buffer_base_addr address =
   let wordH = (address lsr 16) land 0xFFFF in
   let wordL = address land 0xFFFF in
-  write_reg `LISAR2 wordH;
-  write_reg `LISAR wordL
+  write_reg LISAR2 wordH;
+  write_reg LISAR wordL
 
 (* TODO unused because transmitting the area too does not affect performance
    let load_img_start image_info =
-   write_cmd_args `Load_image [image_info]
+   write_cmd_args Load_image [image_info]
    let display_area_buffer =
    *)
 
@@ -139,31 +139,31 @@ let transmit (x,y,w,h) =
      *)
     let w = match !State.bpp with `Bpp1 -> w/8 | _ -> w in
     let args = image_info :: [x;y;w;h] in
-    write_cmd_args `Load_image_area args;
+    write_cmd_args Load_image_area args;
   end;
   State.get_buffer ()
   |> get_16bit (x,y,w,h) !State.bpp
   |> write_data_array;
-  write_cmd `Load_image_end
+  write_cmd Load_image_end
 
 let display (x,y,w,h) display_mode =
   let rec wait_for_display_ready () =
-    match read_reg `LUTAFSR with
+    match read_reg LUTAFSR with
     | 0 -> ()
     | _ -> wait_for_display_ready ()
   in
   wait_for_display_ready ();
   match !State.bpp with
   | `Bpp1 ->
-    read_reg `UP1SR2 lor 4
-    |> write_reg `UP1SR2;
-    write_reg `BGVR 0x00FF; (* TODO reread sample code *)
-    write_cmd_args `DPY_area [x; y; w; h; int_of_mode display_mode];
+    read_reg UP1SR2 lor 4
+    |> write_reg UP1SR2;
+    write_reg BGVR 0x00FF; (* TODO reread sample code *)
+    write_cmd_args Display_area [x; y; w; h; int_of_mode display_mode];
     wait_for_display_ready ();
-    read_reg `UP1SR2 land (Int.neg 4)
-    |> write_reg `UP1SR2
+    read_reg UP1SR2 land (Int.neg 4)
+    |> write_reg UP1SR2
   | `Bpp2 | `Bpp4 | `Bpp8 ->
-    write_cmd_args `DPY_area [x; y; w; h; int_of_mode display_mode]
+    write_cmd_args Display_area [x; y; w; h; int_of_mode display_mode]
   | `Bpp3 -> failwith "bpp3 not implemented"
 
 let init () =
@@ -177,7 +177,7 @@ let init () =
   end;
 
   (* Initialise board *)
-  write_reg `I80CPCR 0x0001;
+  write_reg I80CPCR 0x0001;
   let vcom = 1500 in (* -1.53V = 1530 = 0x5FA *)
   set_vcom vcom;
 
