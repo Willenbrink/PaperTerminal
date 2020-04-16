@@ -1,5 +1,6 @@
 (library
   (name epd)
+  (public_name IT8951)
   ; This builds the bus.c library and saves it to "_build/default/lib/dllepd_stubs.so"
   ; The exact reason for this name and how to modify it is unclear
   (foreign_stubs
