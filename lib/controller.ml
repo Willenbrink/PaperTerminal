@@ -2,10 +2,18 @@ open Command
 open State
 
 (* Third layer: Control the IT8951 by sending commands *)
+    (*
+       in 8bpp:
+ 	   //Display Area ?V (x,y,w,h) with mode 2 for fast gray clear mode - depends on current waveform 
 
+//      Regular display - Display Any Gray colors with Mode 2 or others
+
+
+       *)
+(* More information on http://www.waveshare.net/w/upload/c/c4/E-paper-mode-declaration.pdf*)
 type mode =
   | White
-  | Unknown
+  | Fast1BPP
   | Slow
   | Medium
   | Fast
@@ -16,18 +24,13 @@ let int_of_mode = function
    * Unknown works well whereas fast repeatedly fails to display anything.
    * Fast only works for bpp8 and Unknown is only quick for the other modes.
    * TODO this needs further investigation, because the above sounds improbable.
+   * Unknown only works for 1bpp images -> perhaps we can hide this fact from the user
+   * and only provide one fast mode and adjust on the fly?
    *)
-  | Unknown -> 1
+  | Fast1BPP -> 1
   | Slow -> 2
   | Medium -> 3
   | Fast -> 4
-
-(* TODO move somewhere appropriate *)
-let split_32 value =
-  assert (value land 0x7FFFFFFF00000000 == 0);
-  (value land 0xFFFF, (value lsr 16) land 0xFFFF)
-
-let flatten_list xs = List.map (fun (x,y) -> [x;y]) xs |> List.concat
 
 let print_device_info {width; height; address; fwversion; lutversion} =
   Printf.(
@@ -64,32 +67,11 @@ standBy
 initSleep
 *)
 
-let burst_write address content =
-  let amount = List.length content in
-  let args =
-    [split_32 address; split_32 amount]
-    |> flatten_list
-  in
-  write_cmd_args Burst_write args;
-  write_data content;
-  write_cmd Burst_end
-
-let burst_read address amount =
-  let args =
-    [split_32 address; split_32 amount]
-    |> flatten_list
-  in
-  write_cmd_args Burst_read_trigger args;
-  write_cmd Burst_read_start;
-  let result = read_data amount in
-  write_cmd Burst_end;
-  result
-
 let set_image_buffer_base_addr address =
   let wordH = (address lsr 16) land 0xFFFF in
   let wordL = address land 0xFFFF in
-  write_reg LISAR2 wordH;
-  write_reg LISAR wordL
+  write_cmd (Reg_write (LISAR2,wordH));
+  write_cmd (Reg_write (LISAR,wordL))
 
 (* TODO unused because transmitting the area too does not affect performance
    let load_img_start image_info =
@@ -130,47 +112,57 @@ let get_16bit (x,y,w,h) bpp data send =
     done
   done
 
-
+(* Do not set the address repeatedly, only change when we use a second buffer in memory.
+ * Can perhaps be used for some cool effects like moving the address 800*20 bytes along
+ * to easily scroll on the screen without retransmitting the whole image. TODO
+   (State.get_dev_info ()).address
+   |> set_image_buffer_base_addr;
+*)
+  (* TODO add option area support*)
 let transmit (x,y,w,h) =
+  let start = Sys.time () in
   let image_info = State.get_image_info () in
-  (* Do not set the address repeatedly, only change when we use a second buffer in memory.
-   * Can perhaps be used for some cool effects like moving the address 800*20 bytes along
-   * to easily scroll on the screen without retransmitting the whole image. TODO
-     (State.get_dev_info ()).address
-     |> set_image_buffer_base_addr;
-  *)
-  begin
     (* Bpp1 is weird because the IT8951 does not support 1 bit transfer.
      * Therefore we disguise Bpp1 as Bpp8 with an eigth of the width
      * and use the firmware to later interpret this as a fullsize Bpp1 image
      *)
-    let w = match !State.bpp with `Bpp1 -> w/8 | _ -> w in
-    let args = image_info :: [x;y;w;h] in
-    write_cmd_args Load_image_area args;
-  end;
-  State.get_buffer ()
-  |> get_16bit (x,y,w,h) !State.bpp
-  |> write_data_array;
-  write_cmd Load_image_end
+  let w = match !State.bpp with `Bpp1 -> w/8 | _ -> w in
+  let array_iter =
+    State.get_buffer ()
+    |> get_16bit (x,y,w,h) !State.bpp
+  in
+  let ende = Sys.time () in
+  Printf.eprintf "Preparing took %fs!\n" (ende -. start);
+  let cmd = Load_image (image_info, Some (x,y,w,h), array_iter) in
+  write_cmd cmd;
+  let ende = Sys.time () in
+  Printf.eprintf "Transmit took %fs!\n" (ende -. start);
+  flush_all ()
 
 let display (x,y,w,h) display_mode =
   let rec wait_for_display_ready () =
-    match read_reg LUTAFSR with
+    match write_cmd (Reg_read LUTAFSR) with
     | 0 -> ()
     | _ -> wait_for_display_ready ()
   in
   wait_for_display_ready ();
   match !State.bpp with
   | `Bpp1 ->
-    read_reg UP1SR2 lor 4
-    |> write_reg UP1SR2;
-    write_reg BGVR 0x00FF; (* TODO reread sample code *)
-    write_cmd_args Display_area [x; y; w; h; int_of_mode display_mode];
+    write_cmd (Reg_read UP1SR2) lor 4
+    |> (fun i -> Reg_write (UP1SR2, i))
+    |> write_cmd;
+    write_cmd (Reg_write (BGVR,0x00FF)); (* TODO reread sample code *)
+    write_cmd (Display_area ((int_of_mode display_mode),(Some (x,y,w,h)), None));
     wait_for_display_ready ();
-    read_reg UP1SR2 land (Int.neg 4)
-    |> write_reg UP1SR2
+    write_cmd (Reg_read UP1SR2) land (Int.neg 4)
+    |> (fun i -> Reg_write (UP1SR2, i))
+    |> write_cmd
   | `Bpp2 | `Bpp4 | `Bpp8 ->
-    write_cmd_args Display_area [x; y; w; h; int_of_mode display_mode]
+    let start = Sys.time () in
+    write_cmd (Display_area ((int_of_mode display_mode),(Some (x,y,w,h)), None));
+    let ende = Sys.time () in
+    Printf.eprintf "Display took %fs!\n" (ende -. start);
+    flush_all ()
   | `Bpp3 -> failwith "bpp3 not implemented"
 
 let init () =
@@ -178,15 +170,12 @@ let init () =
   Printexc.record_backtrace true;
   (* Initialise bus *)
   (* TODO handle concurrent applications *)
-  begin
-    if not (Bus.init ())
-    then failwith "Bus initialisation failed, insufficient permissions?"
-  end;
+  Bus.init ();
 
   (* Initialise board *)
-  write_reg I80CPCR 0x0001;
+  write_cmd (Reg_write (I80CPCR,0x0001));
   let vcom = 1500 in (* -1.53V = 1530 = 0x5FA *)
-  set_vcom vcom;
+  write_cmd (VCOM_write vcom);
 
   (* Initialise state used by other functions *)
   (* TODO get_dev_info modifies dev_info *)

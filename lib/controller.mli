@@ -2,7 +2,7 @@
 
 type mode =
   | White
-  | Unknown
+  | Fast1BPP
   | Slow
   | Medium
   | Fast
