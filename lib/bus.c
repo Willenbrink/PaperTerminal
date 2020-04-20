@@ -1,13 +1,17 @@
 #include <bcm2835.h>
 #include "bus.h"
 
+// Pins:
+// Chip/Slave Select:
 #define CS 8
-#define HRDY 24
+// Ready: Used for Handshake
+#define RDY 24
+// Reset: Used to reset the IT8951
 #define RESET 17
 
 void waitForBus()
 {
-  while(!bcm2835_gpio_lev(HRDY));
+  while(!bcm2835_gpio_lev(RDY));
 }
 
 void openBus()
@@ -39,13 +43,14 @@ bool initBCM()
   bcm2835_spi_begin();
   bcm2835_spi_setBitOrder(BCM2835_SPI_BIT_ORDER_MSBFIRST);      //default
   bcm2835_spi_setDataMode(BCM2835_SPI_MODE0);                   //default
-  /* TODO Apparently even values are acceptable and 400 MHz / 20 results in 20 MHz
-   * This is the stated maximum of the IT8951. 16 also works and should be faster.
+  /* Apparently even values are acceptable and 400 MHz / 16 results in 25 MHz
+   * This is the stated maximum of the IT8951. 10 also works and should be faster.
+   * No downside has been observed so far.
    */
   bcm2835_spi_setClockDivider(10);
 
   bcm2835_gpio_fsel(CS, BCM2835_GPIO_FSEL_OUTP);
-  bcm2835_gpio_fsel(HRDY, BCM2835_GPIO_FSEL_INPT);
+  bcm2835_gpio_fsel(RDY, BCM2835_GPIO_FSEL_INPT);
   bcm2835_gpio_fsel(RESET, BCM2835_GPIO_FSEL_OUTP);
 
   bcm2835_gpio_write(CS, HIGH);
